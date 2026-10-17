@@ -1,0 +1,328 @@
+import AppKit
+import MarkupCore
+
+/// A document window: a header strip with the style popup, above the editor.
+///
+/// The text view never contains Markdown markers. Each line's style lives in
+/// attributes on its characters: `.blockStyle` for headings, and for list
+/// items an attachment character at the start of the line (`.listMarker`)
+/// plus `.listLevel`. `markdown` turns these back into Markdown.
+@MainActor
+final class EditorWindowController: NSWindowController, NSWindowDelegate, NSTextViewDelegate, NSTextStorageDelegate {
+    static let headerHeight: CGFloat = 44
+
+    let headerView = NSVisualEffectView()
+    let stylePopUp = NSPopUpButton(frame: .zero, pullsDown: false)
+    let textView = EditorTextView(usingTextLayoutManager: false)
+
+    /// The range of the text inserted by the edit in progress, recorded when
+    /// the text view asks to change the text and acted on once it has.
+    private var pendingEdit: NSRange?
+
+    /// True while the controller is changing the text itself, so its own
+    /// changes aren't treated as typing.
+    private var isAdjustingText = false
+
+    init() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.minSize = NSSize(width: 480, height: 320)
+        window.center()
+
+        super.init(window: window)
+
+        headerView.material = .headerView
+        headerView.blendingMode = .withinWindow
+
+        for style in BlockStyle.allCases {
+            stylePopUp.addItem(withTitle: style.title)
+            stylePopUp.lastItem?.tag = style.rawValue
+        }
+        stylePopUp.target = self
+        stylePopUp.action = #selector(styleChosen(_:))
+        stylePopUp.selectItem(withTag: BlockStyle.paragraph.rawValue)
+
+        let divider = NSBox()
+        divider.boxType = .separator
+
+        let scrollView = makeScrollView()
+
+        let contentView = NSView()
+        for view in [headerView, divider, scrollView] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            contentView.addSubview(view)
+        }
+        stylePopUp.translatesAutoresizingMaskIntoConstraints = false
+        headerView.addSubview(stylePopUp)
+
+        NSLayoutConstraint.activate([
+            headerView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            headerView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            headerView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            headerView.heightAnchor.constraint(equalToConstant: Self.headerHeight),
+
+            stylePopUp.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 12),
+            stylePopUp.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+
+            divider.topAnchor.constraint(equalTo: headerView.bottomAnchor),
+            divider.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            divider.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+
+            scrollView.topAnchor.constraint(equalTo: divider.bottomAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+        ])
+
+        window.contentView = contentView
+        window.initialFirstResponder = textView
+        window.delegate = self
+        textView.delegate = self
+        storage.delegate = self
+        textView.markerClickHandler = { [unowned self] index in toggleCheckbox(at: index) }
+        textView.plainTextForCopy = { [unowned self] range in plainText(for: range) }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    /// The text view uses TextKit 1, whose layout manager can locate list
+    /// markers for clicks.
+    private func makeScrollView() -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller = true
+        scrollView.borderType = .noBorder
+
+        textView.frame = NSRect(x: 0, y: 0, width: 800, height: 600)
+        textView.minSize = .zero
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(width: 800, height: CGFloat.greatestFiniteMagnitude)
+
+        // The document is plain text (eventually Markdown), so turn off rich
+        // text and the substitutions that would rewrite Markdown syntax.
+        textView.isRichText = false
+        textView.importsGraphics = false
+        textView.allowsUndo = true
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
+        textView.isAutomaticSpellingCorrectionEnabled = false
+        textView.isContinuousSpellCheckingEnabled = true
+
+        textView.typingAttributes = BlockStyle.paragraph.attributes
+        textView.textContainerInset = NSSize(width: 24, height: 24)
+
+        scrollView.documentView = textView
+        return scrollView
+    }
+
+    var storage: NSTextStorage { textView.textStorage! }
+
+    // MARK: - Lines
+
+    /// The line containing `location`, including its newline.
+    func lineRange(at location: Int) -> NSRange {
+        (storage.string as NSString).paragraphRange(for: NSRange(location: location, length: 0))
+    }
+
+    /// The lines that `range` touches.
+    func lineRanges(in range: NSRange) -> [NSRange] {
+        let string = storage.string as NSString
+        let span = string.paragraphRange(for: range)
+        var lines: [NSRange] = []
+        var location = span.location
+        while location < NSMaxRange(span) {
+            let line = string.paragraphRange(for: NSRange(location: location, length: 0))
+            lines.append(line)
+            location = NSMaxRange(line)
+        }
+        return lines
+    }
+
+    /// `line` without its newline.
+    func contentsRange(of line: NSRange) -> NSRange {
+        var contentsEnd = 0
+        (storage.string as NSString).getParagraphStart(nil, end: nil, contentsEnd: &contentsEnd,
+                                                      for: NSRange(location: line.location, length: 0))
+        return NSRange(location: line.location, length: contentsEnd - line.location)
+    }
+
+    /// The list item that `line` is, if it starts with a list marker.
+    func listItem(at line: NSRange) -> ListItem? {
+        guard line.length > 0,
+              let raw = storage.attribute(.listMarker, at: line.location, effectiveRange: nil) as? Int,
+              let marker = ListMarker(rawValue: raw) else { return nil }
+        let level = storage.attribute(.listLevel, at: line.location, effectiveRange: nil) as? Int ?? 0
+        return ListItem(level: level, marker: marker)
+    }
+
+    // MARK: - Undoable changes
+
+    /// Replaces text the way typing would: undoably, and with the text view
+    /// told before and after.
+    func replaceCharacters(in range: NSRange, with text: NSAttributedString) {
+        textView.breakUndoCoalescing()
+        isAdjustingText = true
+        defer { isAdjustingText = false }
+        guard textView.shouldChangeText(in: range, replacementString: text.string) else { return }
+        storage.replaceCharacters(in: range, with: text)
+        textView.didChangeText()
+    }
+
+    /// Runs `change`, which may change only attributes within `range`, and
+    /// registers an undo that puts the previous attributes back.
+    func changeAttributes(in range: NSRange, _ change: () -> Void) {
+        let previous = storage.attributedSubstring(from: range)
+        storage.beginEditing()
+        change()
+        storage.endEditing()
+        registerUndo(restoring: previous, at: range.location)
+    }
+
+    /// Puts back the attributes of `attributed` over the same span of text,
+    /// registering the reverse so the change can be redone.
+    private func restoreAttributes(_ attributed: NSAttributedString, at location: Int) {
+        let range = NSRange(location: location, length: attributed.length)
+        guard NSMaxRange(range) <= storage.length else { return }
+        changeAttributes(in: range) {
+            attributed.enumerateAttributes(in: NSRange(location: 0, length: attributed.length)) { attributes, run, _ in
+                storage.setAttributes(attributes, range: NSRange(location: location + run.location, length: run.length))
+            }
+        }
+        updateForSelection()
+    }
+
+    private func registerUndo(restoring attributed: NSAttributedString, at location: Int) {
+        guard let undoManager else { return }
+        // Stop NSTextView extending an earlier typing undo past this change,
+        // which would leave this undo pointing at text that has moved.
+        textView.breakUndoCoalescing()
+        nonisolated(unsafe) let attributed = attributed
+        undoManager.registerUndo(withTarget: self) { controller in
+            MainActor.assumeIsolated {
+                controller.restoreAttributes(attributed, at: location)
+            }
+        }
+    }
+
+    // MARK: - NSTextViewDelegate
+
+    func textViewDidChangeSelection(_ notification: Notification) {
+        updateForSelection()
+    }
+
+    func textView(_ textView: NSTextView, willChangeSelectionFromCharacterRange oldRange: NSRange,
+                  toCharacterRange newRange: NSRange) -> NSRange {
+        adjustSelectionAroundListMarker(from: oldRange, to: newRange)
+    }
+
+    func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        switch commandSelector {
+        case #selector(NSResponder.insertNewline(_:)):
+            insertNewlineInList() || insertNewlineAfterHeading()
+        case #selector(NSResponder.insertTab(_:)):
+            changeListLevel(by: 1)
+        case #selector(NSResponder.insertBacktab(_:)):
+            changeListLevel(by: -1)
+        default:
+            false
+        }
+    }
+
+    func textView(_ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange,
+                  replacementString: String?) -> Bool {
+        if let replacementString, !isAdjustingText {
+            pendingEdit = NSRange(location: affectedCharRange.location, length: (replacementString as NSString).length)
+        }
+        return true
+    }
+
+    func textDidChange(_ notification: Notification) {
+        guard let edit = pendingEdit, !isAdjustingText else { return }
+        pendingEdit = nil
+        guard let undoManager, !undoManager.isUndoing, !undoManager.isRedoing else { return }
+        applyListShortcuts(after: edit)
+        updateForSelection()
+    }
+
+    // MARK: - NSTextStorageDelegate
+
+    /// Keeps every line consistent after an edit. A list line (one starting
+    /// with a marker) has its item's attributes throughout. Any other line
+    /// has a single block style throughout, taken from its first character,
+    /// and no list attributes. This is what turns two joined lines into one
+    /// line in the first line's style, and a line whose marker was deleted
+    /// back into a paragraph.
+    nonisolated func textStorage(_ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions,
+                                 range editedRange: NSRange, changeInLength delta: Int) {
+        MainActor.assumeIsolated {
+            guard editedMask.contains(.editedCharacters), let undoManager,
+                  !undoManager.isUndoing, !undoManager.isRedoing else { return }
+            for line in lineRanges(in: editedRange) where line.length > 0 {
+                if let item = listItem(at: line) {
+                    if !hasUniform(.listLevel, item.level, in: line) || !hasUniform(.blockStyle, 0, in: line) {
+                        changeAttributes(in: line) {
+                            storage.addAttributes(item.lineAttributes, range: line)
+                        }
+                    }
+                } else {
+                    let style = storage.blockStyle(at: line.location)
+                    if !hasUniform(.blockStyle, style.rawValue, in: line) || contains(.listLevel, in: line) {
+                        changeAttributes(in: line) {
+                            storage.addAttributes(style.attributes, range: line)
+                            storage.removeAttribute(.listLevel, range: line)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func hasUniform(_ key: NSAttributedString.Key, _ value: Int, in range: NSRange) -> Bool {
+        var isUniform = true
+        storage.enumerateAttribute(key, in: range) { found, _, stop in
+            if (found as? Int) != value {
+                isUniform = false
+                stop.pointee = true
+            }
+        }
+        return isUniform
+    }
+
+    private func contains(_ key: NSAttributedString.Key, in range: NSRange) -> Bool {
+        var found = false
+        storage.enumerateAttribute(key, in: range) { value, _, stop in
+            if value != nil {
+                found = true
+                stop.pointee = true
+            }
+        }
+        return found
+    }
+
+    // MARK: - NSWindowDelegate
+
+    private var markdownDocument: MarkdownDocument? {
+        document as? MarkdownDocument
+    }
+
+    // Typing and style changes register undo on the document's undo manager,
+    // which is how the document tracks unsaved changes.
+    override var undoManager: UndoManager? {
+        markdownDocument?.undoManager
+    }
+
+    func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? {
+        undoManager
+    }
+}
