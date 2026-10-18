@@ -20,6 +20,7 @@ extension EditorWindowController {
     }
 
     var markdown: String {
+        guard !isShowingMarkdown else { return storage.string }
         let string = storage.string as NSString
         var lines: [Line] = []
         var location = 0

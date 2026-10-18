@@ -77,6 +77,15 @@ import Testing
         #expect(MarkdownCodec.lines(fromMarkdown: "- \\[ ] not a task") == [item("[ ] not a task")])
     }
 
+    @Test func headingPrefix() {
+        #expect(MarkdownCodec.headingPrefix(of: "# Title")! == (BlockStyle.heading, 2))
+        #expect(MarkdownCodec.headingPrefix(of: "### ")! == (BlockStyle.subsubheading, 4))
+        #expect(MarkdownCodec.headingPrefix(of: "#") == nil)
+        #expect(MarkdownCodec.headingPrefix(of: "#Title") == nil)
+        #expect(MarkdownCodec.headingPrefix(of: "#### Four") == nil)
+        #expect(MarkdownCodec.headingPrefix(of: " # Indented") == nil)
+    }
+
     @Test func listPrefix() {
         #expect(MarkdownCodec.listPrefix(of: "- a")! == (ListItem(level: 0, marker: .bullet), 2))
         #expect(MarkdownCodec.listPrefix(of: "  - [ ] a")! == (ListItem(level: 1, marker: .unchecked), 8))

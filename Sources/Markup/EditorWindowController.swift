@@ -13,7 +13,12 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
 
     let headerView = NSVisualEffectView()
     let stylePopUp = NSPopUpButton(frame: .zero, pullsDown: false)
+    let viewModeControl = NSSegmentedControl()
     let textView = EditorTextView(usingTextLayoutManager: false)
+
+    /// True when the text view shows the raw Markdown instead of the
+    /// formatted text. Formatting, shortcuts and list commands are off then.
+    var isShowingMarkdown = false
 
     /// The range of the text inserted by the edit in progress, recorded when
     /// the text view asks to change the text and acted on once it has.
@@ -22,6 +27,11 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
     /// True while the controller is changing the text itself, so its own
     /// changes aren't treated as typing.
     private var isAdjustingText = false
+
+    /// A style chosen for an empty last line, which has no characters to
+    /// carry it, and the line's location. It applies while the caret stays
+    /// there, and is forgotten once the caret is anywhere else.
+    var emptyLineStyle: (location: Int, style: BlockStyle)?
 
     init() {
         let window = NSWindow(
@@ -46,6 +56,14 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
         stylePopUp.action = #selector(styleChosen(_:))
         stylePopUp.selectItem(withTag: BlockStyle.paragraph.rawValue)
 
+        viewModeControl.segmentCount = 2
+        viewModeControl.setLabel("Formatted", forSegment: 0)
+        viewModeControl.setLabel("Markdown", forSegment: 1)
+        viewModeControl.trackingMode = .selectOne
+        viewModeControl.selectedSegment = 0
+        viewModeControl.target = self
+        viewModeControl.action = #selector(viewModeChosen(_:))
+
         let divider = NSBox()
         divider.boxType = .separator
 
@@ -56,8 +74,10 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
             view.translatesAutoresizingMaskIntoConstraints = false
             contentView.addSubview(view)
         }
-        stylePopUp.translatesAutoresizingMaskIntoConstraints = false
-        headerView.addSubview(stylePopUp)
+        for control in [stylePopUp, viewModeControl] {
+            control.translatesAutoresizingMaskIntoConstraints = false
+            headerView.addSubview(control)
+        }
 
         NSLayoutConstraint.activate([
             headerView.topAnchor.constraint(equalTo: contentView.topAnchor),
@@ -67,6 +87,9 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
 
             stylePopUp.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 12),
             stylePopUp.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+
+            viewModeControl.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -12),
+            viewModeControl.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
 
             divider.topAnchor.constraint(equalTo: headerView.bottomAnchor),
             divider.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
@@ -99,14 +122,18 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
         scrollView.hasVerticalScroller = true
         scrollView.borderType = .noBorder
 
-        textView.frame = NSRect(x: 0, y: 0, width: 800, height: 600)
+        // The text view and the scroll view both start with no size. Layout
+        // then widens the scroll view to fit the window, and autoresizing
+        // widens the text view by the same amount, so the two stay equally
+        // wide and lines wrap at the window's edge.
+        textView.frame = .zero
         textView.minSize = .zero
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
         textView.textContainer?.widthTracksTextView = true
-        textView.textContainer?.containerSize = NSSize(width: 800, height: CGFloat.greatestFiniteMagnitude)
+        textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
 
         // The document is plain text (eventually Markdown), so turn off rich
         // text and the substitutions that would rewrite Markdown syntax.
@@ -116,8 +143,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
-        textView.isAutomaticSpellingCorrectionEnabled = false
-        textView.isContinuousSpellCheckingEnabled = true
+        textView.applyCheckingDefaults()
 
         textView.typingAttributes = BlockStyle.paragraph.attributes
         textView.textContainerInset = NSSize(width: 24, height: 24)
@@ -223,11 +249,12 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
 
     func textView(_ textView: NSTextView, willChangeSelectionFromCharacterRange oldRange: NSRange,
                   toCharacterRange newRange: NSRange) -> NSRange {
-        adjustSelectionAroundListMarker(from: oldRange, to: newRange)
+        isShowingMarkdown ? newRange : adjustSelectionAroundListMarker(from: oldRange, to: newRange)
     }
 
     func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-        switch commandSelector {
+        guard !isShowingMarkdown else { return false }
+        return switch commandSelector {
         case #selector(NSResponder.insertNewline(_:)):
             insertNewlineInList() || insertNewlineAfterHeading()
         case #selector(NSResponder.insertTab(_:)):
@@ -250,8 +277,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
     func textDidChange(_ notification: Notification) {
         guard let edit = pendingEdit, !isAdjustingText else { return }
         pendingEdit = nil
-        guard let undoManager, !undoManager.isUndoing, !undoManager.isRedoing else { return }
-        applyListShortcuts(after: edit)
+        guard !isShowingMarkdown, let undoManager, !undoManager.isUndoing, !undoManager.isRedoing else { return }
+        applyMarkdownShortcuts(after: edit)
         updateForSelection()
     }
 
@@ -266,7 +293,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
     nonisolated func textStorage(_ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions,
                                  range editedRange: NSRange, changeInLength delta: Int) {
         MainActor.assumeIsolated {
-            guard editedMask.contains(.editedCharacters), let undoManager,
+            guard editedMask.contains(.editedCharacters), !isShowingMarkdown, let undoManager,
                   !undoManager.isUndoing, !undoManager.isRedoing else { return }
             for line in lineRanges(in: editedRange) where line.length > 0 {
                 if let item = listItem(at: line) {

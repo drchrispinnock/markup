@@ -19,7 +19,15 @@ let package = Package(
                     "-Xlinker", "__TEXT",
                     "-Xlinker", "__info_plist",
                     "-Xlinker", Context.packageDirectory + "/Info.plist",
-                ])
+                ]),
+                // `swift run` has no app bundle to take the icon from, so debug
+                // builds embed the artwork too (see DevelopmentIcon.swift).
+                .unsafeFlags([
+                    "-Xlinker", "-sectcreate",
+                    "-Xlinker", "__TEXT",
+                    "-Xlinker", "__markup_icon",
+                    "-Xlinker", Context.packageDirectory + "/img/Markup.png",
+                ], .when(configuration: .debug)),
             ]
         ),
         .testTarget(name: "MarkupCoreTests", dependencies: ["MarkupCore"]),

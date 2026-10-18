@@ -46,6 +46,15 @@ public enum MarkdownCodec {
         return (ListItem(level: spaces / 2, marker: marker), spaces + 2 + marker.markdown.count)
     }
 
+    /// The heading that `text` starts with, as typed: one to three `#` and a
+    /// space. Returns the style and the length of the prefix, which is ASCII.
+    public static func headingPrefix(of text: some StringProtocol) -> (style: BlockStyle, length: Int)? {
+        let level = text.prefix(while: { $0 == "#" }).count
+        guard (1...3).contains(level), text.dropFirst(level).first == " ",
+              let style = BlockStyle(rawValue: level) else { return nil }
+        return (style, level + 1)
+    }
+
     /// The task box that `text` starts with: "[ ] " or "[x] ".
     public static func taskMarker(of text: some StringProtocol) -> ListMarker? {
         if text.hasPrefix(ListMarker.unchecked.markdown) { return .unchecked }

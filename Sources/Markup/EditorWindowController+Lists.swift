@@ -2,35 +2,7 @@ import AppKit
 import MarkupCore
 
 extension EditorWindowController {
-    /// Turns Markdown list syntax typed (or pasted) into the edited lines into
-    /// list items: "- " at the start of a paragraph makes a bullet, and "[ ] "
-    /// or "[x] " at the start of a bullet makes it a checkbox. Only edits to
-    /// the syntax itself trigger this, so an undone conversion stays undone
-    /// while the rest of the line is edited.
-    ///
-    /// Also deletes markers that have ended up inside a line, as happens when
-    /// a list line is joined onto the end of another line.
-    func applyListShortcuts(after edit: NSRange) {
-        guard NSMaxRange(edit) <= storage.length else { return }
-        // Top down, so each line's nesting limit sees the line above already
-        // converted. Conversions shorten the text, so track the end of the
-        // edited lines as a distance from the end of the document.
-        let span = (storage.string as NSString).paragraphRange(for: edit)
-        let distanceFromEnd = storage.length - NSMaxRange(span)
-        var location = span.location
-        while location < storage.length - distanceFromEnd {
-            removeMarkers(insideLineAt: lineRange(at: location))
-            let line = lineRange(at: location)
-            if let item = listItem(at: line) {
-                convertTaskPrefix(of: line, item: item, after: edit)
-            } else {
-                convertListPrefix(of: line, after: edit)
-            }
-            location = NSMaxRange(lineRange(at: location))
-        }
-    }
-
-    private func removeMarkers(insideLineAt line: NSRange) {
+    func removeMarkers(insideLineAt line: NSRange) {
         guard line.length > 1 else { return }
         var strays: [Int] = []
         storage.enumerateAttribute(.listMarker, in: NSRange(location: line.location + 1, length: line.length - 1)) { value, run, _ in
@@ -43,7 +15,7 @@ extension EditorWindowController {
         }
     }
 
-    private func convertListPrefix(of line: NSRange, after edit: NSRange) {
+    func convertListPrefix(of line: NSRange, after edit: NSRange) {
         guard line.length > 0, storage.blockStyle(at: line.location) == .paragraph else { return }
         let text = (storage.string as NSString).substring(with: contentsRange(of: line))
         guard let prefix = MarkdownCodec.listPrefix(of: text), edit.location < line.location + prefix.length else { return }
@@ -52,7 +24,7 @@ extension EditorWindowController {
         replaceMarkdownPrefix(NSRange(location: line.location, length: prefix.length), with: item)
     }
 
-    private func convertTaskPrefix(of line: NSRange, item: ListItem, after edit: NSRange) {
+    func convertTaskPrefix(of line: NSRange, item: ListItem, after edit: NSRange) {
         guard item.marker == .bullet else { return }
         let contents = contentsRange(of: line)
         let text = (storage.string as NSString).substring(with: NSRange(location: contents.location + 1, length: contents.length - 1))

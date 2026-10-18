@@ -355,3 +355,364 @@ import Testing
         #expect(editor.markdown == markdown)
     }
 }
+
+/// Typing "# ", "## " or "### " at the start of a line.
+@MainActor
+@Suite struct HeadingShortcutTests {
+    let document: MarkdownDocument
+    let editor: EditorWindowController
+
+    init() {
+        _ = NSApplication.shared
+        document = MarkdownDocument()
+        document.undoManager?.groupsByEvent = false
+        document.makeWindowControllers()
+        editor = document.windowControllers.first as! EditorWindowController
+    }
+
+    private var textView: EditorTextView { editor.textView }
+
+    private func step(_ action: () -> Void) {
+        document.undoManager?.beginUndoGrouping()
+        action()
+        document.undoManager?.endUndoGrouping()
+    }
+
+    private func type(_ text: String) {
+        for character in text {
+            step { textView.insertText(String(character), replacementRange: textView.selectedRange()) }
+        }
+    }
+
+    private func press(_ command: Selector) {
+        step { textView.doCommand(by: command) }
+    }
+
+    private func fontSize(at location: Int) -> CGFloat {
+        (textView.textStorage!.attribute(.font, at: location, effectiveRange: nil) as! NSFont).pointSize
+    }
+
+    private var selectedStyle: BlockStyle? {
+        BlockStyle(rawValue: editor.stylePopUp.selectedTag())
+    }
+
+    @Test(arguments: [("# ", BlockStyle.heading), ("## ", .subheading), ("### ", .subsubheading)])
+    func markerAndSpaceMakeAHeading(marker: String, style: BlockStyle) {
+        type(marker)
+        #expect(textView.string == "")
+        #expect(selectedStyle == style)
+        type("Title")
+        #expect(textView.string == "Title")
+        #expect(fontSize(at: 0) == style.font.pointSize)
+        #expect(editor.markdown == marker + "Title")
+    }
+
+    @Test func returnAfterATypedHeadingGoesBackToParagraph() {
+        type("Intro")
+        press(#selector(NSResponder.insertNewline(_:)))
+        type("# Title")
+        press(#selector(NSResponder.insertNewline(_:)))
+        type("Body")
+        #expect(editor.markdown == "Intro\n# Title\nBody")
+    }
+
+    @Test(arguments: ["#Title", "#### Four", "a # b", " # Indented"])
+    func otherHashesStayText(text: String) {
+        type(text)
+        #expect(textView.string == text)
+    }
+
+    @Test func typingTheMarkerBeforeExistingTextMakesItAHeading() {
+        editor.load(markdown: "Title")
+        type("## ")
+        #expect(textView.string == "Title")
+        #expect(editor.markdown == "## Title")
+        #expect(textView.selectedRange().location == 0)
+    }
+
+    @Test func retypingTheMarkerOnAHeadingChangesItsLevel() {
+        editor.load(markdown: "# Title")
+        type("### ")
+        #expect(editor.markdown == "### Title")
+    }
+
+    @Test func hashesInAListItemStayText() {
+        type("- # x")
+        #expect(editor.markdown == "- # x")
+    }
+
+    @Test func undoingTheShortcutPutsTheTypingBack() {
+        type("# ")
+        document.undoManager?.undo()
+        #expect(editor.markdown == "\\#")
+        type("x")
+        #expect(textView.string == "#x")
+    }
+
+    @Test func pastedMarkdownHeadingsBecomeHeadings() {
+        step { textView.insertText("# Title\n## Section\n- item", replacementRange: textView.selectedRange()) }
+        #expect(textView.string == "Title\nSection\n\u{FFFC}item")
+        #expect(editor.markdown == "# Title\n## Section\n- item")
+    }
+
+    @Test func rememberedStyleIsForgottenWhenTheCaretLeaves() {
+        type("Intro")
+        press(#selector(NSResponder.insertNewline(_:)))
+        type("# ")
+        #expect(selectedStyle == .heading)
+        textView.setSelectedRange(NSRange(location: 2, length: 0))
+        #expect(selectedStyle == .paragraph)
+        textView.setSelectedRange(NSRange(location: 6, length: 0))
+        #expect(selectedStyle == .paragraph)
+    }
+}
+
+/// The Formatted / Markdown switch in the header.
+@MainActor
+@Suite struct ViewModeTests {
+    let document: MarkdownDocument
+    let editor: EditorWindowController
+
+    init() {
+        _ = NSApplication.shared
+        document = MarkdownDocument()
+        document.undoManager?.groupsByEvent = false
+        document.makeWindowControllers()
+        editor = document.windowControllers.first as! EditorWindowController
+    }
+
+    private var textView: EditorTextView { editor.textView }
+
+    private func step(_ action: () -> Void) {
+        document.undoManager?.beginUndoGrouping()
+        action()
+        document.undoManager?.endUndoGrouping()
+    }
+
+    private func type(_ text: String) {
+        for character in text {
+            step { textView.insertText(String(character), replacementRange: textView.selectedRange()) }
+        }
+    }
+
+    private func press(_ command: Selector) {
+        step { textView.doCommand(by: command) }
+    }
+
+    private func choose(segment: Int) {
+        editor.viewModeControl.selectedSegment = segment
+        editor.viewModeControl.sendAction(editor.viewModeControl.action, to: editor.viewModeControl.target)
+    }
+
+    private let sample = "# Title\n\\# not a heading\n- a\n  - [ ] b\n- [x] c"
+
+    @Test func markdownViewShowsTheSavedText() throws {
+        editor.load(markdown: sample)
+        choose(segment: 1)
+        #expect(textView.string == sample)
+        #expect(!editor.stylePopUp.isEnabled)
+        let font = textView.textStorage!.attribute(.font, at: 0, effectiveRange: nil) as! NSFont
+        #expect(font.isFixedPitch)
+        let data = try document.data(ofType: "net.daringfireball.markdown")
+        #expect(String(decoding: data, as: UTF8.self) == sample)
+    }
+
+    @Test func switchingBackFormatsTheMarkdown() {
+        editor.load(markdown: sample)
+        choose(segment: 1)
+        choose(segment: 0)
+        #expect(textView.string == "Title\n# not a heading\n\u{FFFC}a\n\u{FFFC}b\n\u{FFFC}c")
+        #expect(editor.stylePopUp.isEnabled)
+        #expect(editor.markdown == sample)
+    }
+
+    @Test func markdownTypedInTheMarkdownViewIsFormattedOnSwitchingBack() {
+        choose(segment: 1)
+        type("## Section")
+        #expect(textView.string == "## Section")
+        press(#selector(NSResponder.insertNewline(_:)))
+        type("- item")
+        press(#selector(NSResponder.insertNewline(_:)))
+        #expect(textView.string == "## Section\n- item\n")
+        choose(segment: 0)
+        #expect(textView.string == "Section\n\u{FFFC}item\n")
+        #expect(editor.markdown == "## Section\n- item\n")
+    }
+
+    @Test func tabInTheMarkdownViewTypesATab() {
+        choose(segment: 1)
+        type("- a")
+        press(#selector(NSResponder.insertTab(_:)))
+        #expect(textView.string == "- a\t")
+    }
+
+    @Test func caretStaysOnTheSameText() {
+        editor.load(markdown: "Intro\n## Section\n- item")
+        textView.setSelectedRange(NSRange(location: 9, length: 0))  // "Sec|tion"
+        choose(segment: 1)
+        #expect(textView.selectedRange().location == 12)  // "## Sec|tion"
+        textView.setSelectedRange(NSRange(location: 20, length: 0))  // "- i|tem"
+        choose(segment: 0)
+        #expect(textView.selectedRange().location == 16)  // marker, "i|tem"
+    }
+
+    @Test func switchingDoesNotMarkTheDocumentEdited() {
+        editor.load(markdown: sample)
+        choose(segment: 1)
+        choose(segment: 0)
+        #expect(!document.isDocumentEdited)
+    }
+
+    @Test func viewMenuItemTogglesAndShowsState() {
+        let item = NSMenuItem(title: "Show Markdown", action: #selector(EditorWindowController.toggleMarkdown(_:)), keyEquivalent: "")
+        editor.toggleMarkdown(item)
+        #expect(editor.isShowingMarkdown)
+        #expect(editor.viewModeControl.selectedSegment == 1)
+        _ = editor.validateMenuItem(item)
+        #expect(item.state == .on)
+        editor.toggleMarkdown(item)
+        #expect(!editor.isShowingMarkdown)
+    }
+
+    @Test func appMenuHasAbout() {
+        let appMenu = MainMenu.make().items.first!.submenu!
+        let about = appMenu.items.first!
+        #expect(about.title == "About Markup")
+        #expect(about.action == #selector(NSApplication.orderFrontStandardAboutPanel(_:)))
+    }
+}
+
+/// Spelling and grammar settings and the Edit > Spelling and Grammar menu.
+@MainActor
+@Suite struct SpellingAndGrammarTests {
+    let defaults: UserDefaults
+    let suiteName = "MarkupTests-\(UUID().uuidString)"
+
+    init() {
+        _ = NSApplication.shared
+        defaults = UserDefaults(suiteName: suiteName)!
+    }
+
+    private func makeEditor() -> EditorTextView {
+        let document = MarkdownDocument()
+        document.makeWindowControllers()
+        let textView = (document.windowControllers.first as! EditorWindowController).textView
+        textView.checkingDefaults = defaults
+        return textView
+    }
+
+    @Test func spellingAndGrammarAreOnAndAutocorrectIsOffByDefault() {
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let textView = makeEditor()
+        #expect(textView.isContinuousSpellCheckingEnabled)
+        #expect(textView.isGrammarCheckingEnabled)
+        #expect(!textView.isAutomaticSpellingCorrectionEnabled)
+    }
+
+    @Test func togglingIsSavedAndReachesOtherEditors() {
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let first = makeEditor()
+        let second = makeEditor()
+        first.toggleGrammarChecking(nil)
+        first.toggleAutomaticSpellingCorrection(nil)
+
+        #expect(!defaults.bool(forKey: EditorTextView.checkGrammarKey))
+        #expect(defaults.bool(forKey: EditorTextView.correctSpellingKey))
+        #expect(!second.isGrammarCheckingEnabled)
+        #expect(second.isAutomaticSpellingCorrectionEnabled)
+        #expect(!makeEditor().isGrammarCheckingEnabled)
+    }
+
+    @Test func editorsWithOtherDefaultsAreNotAffected() {
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let otherName = "MarkupTests-\(UUID().uuidString)"
+        defer { UserDefaults().removePersistentDomain(forName: otherName) }
+        let other = makeEditor()
+        other.checkingDefaults = UserDefaults(suiteName: otherName)!
+        makeEditor().toggleGrammarChecking(nil)
+        #expect(other.isGrammarCheckingEnabled)
+    }
+
+    @Test func menuTogglesAreTickedToMatch() {
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let textView = makeEditor()
+        let menu = MainMenu.make().items.first { $0.title == "Edit" }!.submenu!
+            .items.first { $0.title == "Spelling and Grammar" }!.submenu!
+        #expect(menu.items.map(\.title) == [
+            "Show Spelling and Grammar", "Check Document Now", "",
+            "Check Spelling While Typing", "Check Grammar With Spelling", "Correct Spelling Automatically",
+        ])
+        let grammar = menu.items[4]
+        _ = textView.validateMenuItem(grammar)
+        #expect(grammar.state == .on)
+        textView.toggleGrammarChecking(grammar)
+        _ = textView.validateMenuItem(grammar)
+        #expect(grammar.state == .off)
+    }
+}
+
+@MainActor
+@Suite struct DevelopmentIconTests {
+    /// The icon fills the standard rounded rect and nothing outside it.
+    @Test func iconIsTheArtworkClippedToTheIconOutline() throws {
+        let icon = try #require(DevelopmentIcon.make())
+        let tiff = try #require(icon.tiffRepresentation)
+        let bitmap = try #require(NSBitmapImageRep(data: tiff))
+        #expect(bitmap.pixelsWide == 1024)
+        func alpha(_ x: Int, _ y: Int) -> CGFloat { bitmap.colorAt(x: x, y: y)!.alphaComponent }
+        #expect(alpha(512, 512) == 1)
+        #expect(alpha(512, 102) == 1)
+        #expect(alpha(50, 50) == 0)
+        #expect(alpha(110, 110) == 0)
+        #expect(alpha(512, 90) == 0)
+    }
+}
+
+/// Long lines wrap at the window's width.
+@MainActor
+@Suite struct LineWrappingTests {
+    let document: MarkdownDocument
+    let editor: EditorWindowController
+
+    init() {
+        _ = NSApplication.shared
+        document = MarkdownDocument()
+        document.makeWindowControllers()
+        editor = document.windowControllers.first as! EditorWindowController
+    }
+
+    private func expectTextFitsWindow() {
+        let window = editor.window!
+        window.layoutIfNeeded()
+        let clipView = editor.textView.enclosingScrollView!.contentView
+        #expect(editor.textView.frame.width == clipView.bounds.width)
+        #expect(editor.textView.frame.width <= window.contentView!.bounds.width)
+    }
+
+    @Test func textViewIsAsWideAsTheWindow() {
+        expectTextFitsWindow()
+    }
+
+    @Test func textViewFollowsTheWindowWhenResized() {
+        let window = editor.window!
+        window.setContentSize(NSSize(width: 520, height: 400))
+        expectTextFitsWindow()
+        window.setContentSize(NSSize(width: 1100, height: 700))
+        expectTextFitsWindow()
+    }
+
+    /// Including a heading, a list item and a word too long for one line.
+    @Test func longLinesWrap() {
+        editor.load(markdown: "# " + String(repeating: "heading ", count: 40) + "\n"
+            + "- " + String(repeating: "item ", count: 80) + "\n"
+            + String(repeating: "x", count: 400))
+        editor.window!.setContentSize(NSSize(width: 520, height: 400))
+        editor.window!.layoutIfNeeded()
+        let textView = editor.textView
+        let layoutManager = textView.layoutManager!
+        layoutManager.ensureLayout(for: textView.textContainer!)
+        let used = layoutManager.usedRect(for: textView.textContainer!)
+        #expect(used.height > 100)
+        #expect(used.maxX + textView.textContainerOrigin.x <= textView.enclosingScrollView!.contentView.bounds.width)
+    }
+}

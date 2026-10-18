@@ -26,9 +26,12 @@ extension EditorWindowController {
             textView.setSelectedRange(NSRange(location: location, length: selection.length == 0 ? 0 : NSMaxRange(lines) - location))
         }
         // An empty last line has no characters to style, so the choice is
-        // carried by the typing attributes until something is typed.
-        textView.typingAttributes = style.attributes
-        stylePopUp.selectItem(withTag: style.rawValue)
+        // remembered for it until something is typed.
+        let caret = textView.selectedRange().location
+        if lineRange(at: caret).length == 0 {
+            emptyLineStyle = (caret, style)
+        }
+        updateForSelection()
         window?.makeFirstResponder(textView)
     }
 
@@ -46,13 +49,28 @@ extension EditorWindowController {
     /// NSTextView would otherwise carry the previous line's style into the
     /// start of the next one.
     func updateForSelection() {
-        let line = lineRange(at: textView.selectedRange().location)
+        guard !isShowingMarkdown else {
+            textView.typingAttributes = Self.markdownAttributes
+            return
+        }
+        let caret = textView.selectedRange().location
+        let line = lineRange(at: caret)
         if let item = listItem(at: line) {
+            emptyLineStyle = nil
             textView.typingAttributes = item.lineAttributes
             stylePopUp.selectItem(withTag: BlockStyle.paragraph.rawValue)
             return
         }
-        let style = line.length > 0 ? storage.blockStyle(at: line.location) : .paragraph
+        let style: BlockStyle
+        if line.length > 0 {
+            style = storage.blockStyle(at: line.location)
+            emptyLineStyle = nil
+        } else if let remembered = emptyLineStyle, remembered.location == caret {
+            style = remembered.style
+        } else {
+            style = .paragraph
+            emptyLineStyle = nil
+        }
         textView.typingAttributes = style.attributes
         stylePopUp.selectItem(withTag: style.rawValue)
     }
