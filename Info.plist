@@ -36,6 +36,23 @@
 			<key>NSDocumentClass</key>
 			<string>MarkdownDocument</string>
 		</dict>
+		<dict>
+			<!-- Another app may declare its own type for .md, which then
+			     takes over from net.daringfireball.markdown. Such types
+			     conform to plain text, so accept any plain text. -->
+			<key>CFBundleTypeName</key>
+			<string>Plain Text</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.plain-text</string>
+			</array>
+			<key>NSDocumentClass</key>
+			<string>MarkdownDocument</string>
+		</dict>
 	</array>
 	<key>UTImportedTypeDeclarations</key>
 	<array>
