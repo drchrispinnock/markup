@@ -45,6 +45,7 @@ enum MainMenu {
         editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editMenu.addItem(.separator())
+        editMenu.addItem(submenu: findMenu(), title: "Find")
         editMenu.addItem(submenu: spellingMenu(), title: "Spelling and Grammar")
         mainMenu.addItem(submenu: editMenu, title: "Edit")
 
@@ -82,6 +83,27 @@ enum MainMenu {
         NSApp.windowsMenu = windowMenu
 
         return mainMenu
+    }
+
+    /// NSTextView handles these through its NSTextFinder, which shows the
+    /// find bar. Each item's tag is its `NSTextFinder.Action`.
+    private static func findMenu() -> NSMenu {
+        let menu = NSMenu(title: "Find")
+        let items: [(String, NSTextFinder.Action, String, NSEvent.ModifierFlags)] = [
+            ("Find…", .showFindInterface, "f", [.command]),
+            ("Find and Replace…", .showReplaceInterface, "f", [.command, .option]),
+            ("Find Next", .nextMatch, "g", [.command]),
+            ("Find Previous", .previousMatch, "g", [.command, .shift]),
+            // ⌘E is Format > Code.
+            ("Use Selection for Find", .setSearchString, "", []),
+        ]
+        for (title, action, key, modifiers) in items {
+            let item = menu.addItem(withTitle: title, action: #selector(NSTextView.performTextFinderAction(_:)),
+                                    keyEquivalent: key)
+            item.keyEquivalentModifierMask = modifiers
+            item.tag = action.rawValue
+        }
+        return menu
     }
 
     /// NSTextView handles these actions and ticks the toggles to match its

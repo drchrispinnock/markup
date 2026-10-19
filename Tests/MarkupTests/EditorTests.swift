@@ -1691,3 +1691,19 @@ import Testing
         #expect(project.documents.isEmpty)
     }
 }
+
+@MainActor
+@Suite struct FindTests {
+    @Test func findShowsTheFindBarAboveTheText() throws {
+        _ = NSApplication.shared
+        let document = MarkdownDocument()
+        document.makeWindowControllers()
+        let textView = document.editor.textView
+        let find = try #require(MainMenu.make().items.first { $0.title == "Edit" }?.submenu?
+            .items.first { $0.title == "Find" }?.submenu?.items.first)
+        #expect(find.title == "Find…" && find.keyEquivalent == "f")
+        #expect(textView.validateUserInterfaceItem(find))
+        textView.performTextFinderAction(find)
+        #expect(textView.enclosingScrollView?.isFindBarVisible == true)
+    }
+}

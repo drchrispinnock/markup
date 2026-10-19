@@ -205,6 +205,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         textView.isRichText = false
         textView.importsGraphics = false
         textView.allowsUndo = true
+        // Edit > Find shows the find bar above the text, highlighting
+        // matches as the search is typed.
+        textView.usesFindBar = true
+        textView.isIncrementalSearchingEnabled = true
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
