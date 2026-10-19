@@ -716,3 +716,67 @@ import Testing
         #expect(used.maxX + textView.textContainerOrigin.x <= textView.enclosingScrollView!.contentView.bounds.width)
     }
 }
+
+/// File > Print prints the formatted document.
+@MainActor
+@Suite struct PrintingTests {
+    let document: MarkdownDocument
+    let editor: EditorWindowController
+    static let sample = "# Title\n\nSome text.\n\n- one\n  - [x] done\n"
+
+    init() throws {
+        _ = NSApplication.shared
+        document = MarkdownDocument()
+        try document.read(from: Data(Self.sample.utf8), ofType: "net.daringfireball.markdown")
+        document.makeWindowControllers()
+        editor = document.windowControllers.first as! EditorWindowController
+    }
+
+    private func printedText() throws -> NSTextStorage {
+        let operation = try document.printOperation(withSettings: [:])
+        return try #require((operation.view as? NSTextView)?.textStorage)
+    }
+
+    @Test func printsTheFormattedText() throws {
+        let text = try printedText()
+        #expect(text.string == "Title\n\nSome text.\n\n\u{FFFC}one\n\u{FFFC}done\n")
+        #expect(text.blockStyle(at: 0) == .heading)
+        #expect(text.attribute(.listMarker, at: 19, effectiveRange: nil) as? Int == ListMarker.bullet.rawValue)
+    }
+
+    @Test func printsFormattedTextFromTheMarkdownView() throws {
+        editor.setShowingMarkdown(true)
+        #expect(try printedText().string == "Title\n\nSome text.\n\n\u{FFFC}one\n\u{FFFC}done\n")
+    }
+
+    @Test func printsUnsavedEdits() throws {
+        editor.textView.setSelectedRange(NSRange(location: 5, length: 0))
+        editor.textView.insertText("!", replacementRange: editor.textView.selectedRange())
+        #expect(try printedText().string.hasPrefix("Title!\n"))
+    }
+
+    @Test func pageIsTheWidthBetweenTheMargins() throws {
+        let operation = try document.printOperation(withSettings: [:])
+        let info = operation.printInfo
+        let view = try #require(operation.view)
+        #expect(view.frame.width == info.paperSize.width - info.leftMargin - info.rightMargin)
+        #expect(view.frame.height > 0)
+        #expect(view.appearance?.name == .aqua)
+    }
+
+    @Test func printsToPDF() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("MarkupPrint-\(UUID()).pdf")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let long = Self.sample + String(repeating: "A long paragraph that wraps across the page. ", count: 400)
+        editor.load(markdown: long)
+        let operation = try document.printOperation(withSettings: [
+            .jobDisposition: NSPrintInfo.JobDisposition.save,
+            .jobSavingURL: url,
+        ])
+        operation.showsPrintPanel = false
+        operation.showsProgressPanel = false
+        #expect(operation.run())
+        let pdf = try #require(CGPDFDocument(url as CFURL))
+        #expect(pdf.numberOfPages >= 2)
+    }
+}

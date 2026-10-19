@@ -3,6 +3,14 @@ import MarkupCore
 
 extension EditorWindowController {
     func load(markdown: String) {
+        storage.setAttributedString(Self.formattedText(fromMarkdown: markdown))
+        textView.setSelectedRange(NSRange(location: 0, length: 0))
+        updateForSelection()
+    }
+
+    /// Markdown as the editor shows it: markers turned into styles and list
+    /// markers. Used for editing and printing.
+    static func formattedText(fromMarkdown markdown: String) -> NSAttributedString {
         let lines = MarkdownCodec.lines(fromMarkdown: markdown)
         let text = NSMutableAttributedString()
         for (index, line) in lines.enumerated() {
@@ -14,9 +22,7 @@ extension EditorWindowController {
                 text.append(NSAttributedString(string: line.text + terminator, attributes: line.style.attributes))
             }
         }
-        storage.setAttributedString(text)
-        textView.setSelectedRange(NSRange(location: 0, length: 0))
-        updateForSelection()
+        return text
     }
 
     var markdown: String {

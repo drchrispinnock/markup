@@ -16,9 +16,13 @@ final class MarkdownDocument: NSDocument {
         controller.load(markdown: markdown)
     }
 
+    /// The document's Markdown, from the editor if a window is open.
+    var currentMarkdown: String {
+        (windowControllers.first as? EditorWindowController)?.markdown ?? markdown
+    }
+
     override func data(ofType typeName: String) throws -> Data {
-        let editor = windowControllers.first as? EditorWindowController
-        return Data((editor?.markdown ?? markdown).utf8)
+        Data(currentMarkdown.utf8)
     }
 
     override func read(from data: Data, ofType typeName: String) throws {

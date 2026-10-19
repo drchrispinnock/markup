@@ -53,6 +53,10 @@ Invariants that the controller maintains:
 - **Every attribute change is undoable.** Changes go through `changeAttributes(in:_:)`, which registers an undo that restores the previous attributes and registers its own redo. It calls `breakUndoCoalescing()`. Normalisation and shortcuts are skipped while undoing or redoing.
 - **The controller's `undoManager` is the document's.** It is overridden, and also returned to the window, so all edits mark the document edited.
 
+### Printing
+
+File > Print (`MarkdownDocument+Printing.swift`) prints the document formatted, whichever view the window is in. It builds a separate text view from the document's current Markdown with `formattedText(fromMarkdown:)`, the same conversion `load(markdown:)` uses. The view is as wide as the page between the margins, and has the light (aqua) appearance so text prints dark in dark mode.
+
 ### Markdown view
 
 The header's Formatted / Markdown switch (`+ViewMode`) replaces the text storage with the raw Markdown, in a monospaced font, and sets `isShowingMarkdown`. In that mode `markdown` returns the text as is, and the formatting machinery is off: normalisation, shortcuts, `doCommandBy` (so Return and Tab behave as plain text), the caret-before-marker rule and the style popup. Switching back runs `load(markdown:)`. Both views have one line per Markdown line, so the caret is carried across as (line number, distance from line end). Switching clears the undo stack, because undo steps hold ranges in the other view's text. This doesn't change the document's edited state.
