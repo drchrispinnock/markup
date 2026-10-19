@@ -2,26 +2,20 @@ import AppKit
 import MarkupCore
 import UniformTypeIdentifiers
 
-/// The header's Insert Image button. Images come from the images directory
-/// (Markup > Settings), and are written as `![alt](path)` with the path
-/// relative to that directory.
+/// The header's Insert Image button. The image can be anywhere. Its path is
+/// written as short as it can be while still finding it (`imagePath(for:)`):
+/// relative to the images directory, the document's folder, or that
+/// folder's `resources` or `images` folder, or else in full.
 extension EditorViewController {
     @objc func insertImage(_ sender: Any?) {
         guard !isShowingMarkdown, let window = view.window else { return }
-        guard let folder = settings.imagesDirectory else {
-            askForImagesDirectory(in: window)
-            return
-        }
-
         let panel = NSOpenPanel()
-        panel.message = "Choose an image from your images directory."
+        panel.message = "Choose an image."
         panel.prompt = "Insert"
-        panel.directoryURL = folder
+        panel.directoryURL = settings.imagesDirectory ?? document?.fileURL?.deletingLastPathComponent()
         panel.allowedContentTypes = [.image]
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        let panelDelegate = ImagePanelDelegate(folder: folder)
-        panel.delegate = panelDelegate
 
         let altField = NSTextField(string: "")
         altField.placeholderString = "Describes the image for people who can't see it"
@@ -32,10 +26,22 @@ extension EditorViewController {
         panel.isAccessoryViewDisclosed = true
 
         panel.beginSheetModal(for: window) { [self] response in
-            withExtendedLifetime(panelDelegate) {}
-            guard response == .OK, let url = panel.url, let path = Self.path(of: url, relativeTo: folder) else { return }
-            insertImage(path: path, alt: altField.stringValue)
+            guard response == .OK, let url = panel.url else { return }
+            insertImage(path: imagePath(for: url), alt: altField.stringValue)
         }
+    }
+
+    /// The path to write for the image at `url`: the shortest path relative
+    /// to one of `imageFolders` that looking it up finds this same file (so
+    /// just the name, for an image directly in one of them), or else the
+    /// full path.
+    func imagePath(for url: URL) -> String {
+        let file = url.standardizedFileURL.resolvingSymlinksInPath().path
+        let folders = imageFolders
+        let paths = folders.compactMap { Self.path(of: url, relativeTo: $0) }.filter { path in
+            MarkdownImage(alt: "", path: path).fileURL(in: folders)?.standardizedFileURL.resolvingSymlinksInPath().path == file
+        }
+        return paths.min { $0.split(separator: "/").count < $1.split(separator: "/").count } ?? file
     }
 
     /// Inserts the image at the selection, as if its Markdown had been typed.
@@ -50,39 +56,5 @@ extension EditorViewController {
         if !folderPath.hasSuffix("/") { folderPath += "/" }
         guard filePath.hasPrefix(folderPath), filePath.count > folderPath.count else { return nil }
         return String(filePath.dropFirst(folderPath.count))
-    }
-
-    private func askForImagesDirectory(in window: NSWindow) {
-        let alert = NSAlert()
-        alert.messageText = "No images directory"
-        alert.informativeText = "Images are inserted from your images directory. Choose one in Settings."
-        alert.addButton(withTitle: "Open Settings…")
-        alert.addButton(withTitle: "Cancel")
-        alert.beginSheetModal(for: window) { response in
-            if response == .alertFirstButtonReturn {
-                NSApp.sendAction(#selector(AppDelegate.showSettings(_:)), to: nil, from: nil)
-            }
-        }
-    }
-}
-
-/// Lets the open panel choose only files inside the images directory.
-private final class ImagePanelDelegate: NSObject, NSOpenSavePanelDelegate {
-    let folder: URL
-
-    init(folder: URL) {
-        self.folder = folder
-    }
-
-    func panel(_ sender: Any, shouldEnable url: URL) -> Bool {
-        EditorViewController.path(of: url, relativeTo: folder) != nil
-    }
-
-    func panel(_ sender: Any, validate url: URL) throws {
-        guard EditorViewController.path(of: url, relativeTo: folder) != nil else {
-            throw CocoaError(.fileReadNoPermission, userInfo: [
-                NSLocalizedDescriptionKey: "Choose an image inside your images directory.",
-            ])
-        }
     }
 }

@@ -990,6 +990,38 @@ import Testing
         #expect(editor.markdown == #"Hello ![Tom \[the cat\]](cats/tom.png)"#)
     }
 
+    @Test func insertedPathsAreTheShortestThatFindTheImage() throws {
+        defer { cleanUp() }
+        let documentFolder = imagesDirectory.appendingPathComponent("doc")
+        document.fileURL = documentFolder.appendingPathComponent("post.md")
+        let manager = FileManager.default
+        for folder in ["doc/resources/icons", "doc/images", "doc/drafts"] {
+            try manager.createDirectory(at: imagesDirectory.appendingPathComponent(folder), withIntermediateDirectories: true)
+        }
+        for name in ["doc/here.png", "doc/drafts/sketch.png", "doc/resources/logo.png", "doc/resources/icons/star.png",
+                     "doc/images/photo.png", "doc/images/tom.png"] {
+            try Self.writePNG(width: 4, height: 4, to: imagesDirectory.appendingPathComponent(name))
+        }
+        func path(_ name: String) -> String { editor.imagePath(for: imagesDirectory.appendingPathComponent(name)) }
+        #expect(path("cats/tom.png") == "cats/tom.png")
+        #expect(path("doc/here.png") == "here.png")
+        #expect(path("doc/drafts/sketch.png") == "drafts/sketch.png")
+        #expect(path("doc/resources/logo.png") == "logo.png")
+        #expect(path("doc/resources/icons/star.png") == "icons/star.png")
+        #expect(path("doc/images/photo.png") == "photo.png")
+        // Anything shorter would find a different file.
+        try manager.createDirectory(at: imagesDirectory.appendingPathComponent("doc/images/cats"), withIntermediateDirectories: true)
+        try Self.writePNG(width: 4, height: 4, to: imagesDirectory.appendingPathComponent("doc/images/cats/tom.png"))
+        try Self.writePNG(width: 4, height: 4, to: imagesDirectory.appendingPathComponent("photo.png"))
+        #expect(path("doc/images/cats/tom.png") == "images/cats/tom.png")
+        #expect(path("doc/images/photo.png") == "images/photo.png")
+
+        let elsewhere = manager.temporaryDirectory.appendingPathComponent("MarkupElsewhere-\(UUID()).png")
+        try Self.writePNG(width: 4, height: 4, to: elsewhere)
+        defer { try? manager.removeItem(at: elsewhere) }
+        #expect(editor.imagePath(for: elsewhere) == elsewhere.resolvingSymlinksInPath().path)
+    }
+
     @Test func pathsAreRelativeToTheImagesDirectoryOnly() {
         defer { cleanUp() }
         let file = imagesDirectory.appendingPathComponent("cats/tom.png")
