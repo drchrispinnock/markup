@@ -32,6 +32,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     let superscriptButton = NSButton(
         image: NSImage(systemSymbolName: "textformat.superscript", accessibilityDescription: "Superscript")!,
         target: nil, action: nil)
+    let linkButton = NSButton(image: NSImage(systemSymbolName: "link", accessibilityDescription: "Link")!,
+                              target: nil, action: nil)
     let imageButton = NSButton(image: NSImage(systemSymbolName: "photo", accessibilityDescription: "Insert Image")!,
                                target: nil, action: nil)
     let textView = EditorTextView(usingTextLayoutManager: false)
@@ -92,6 +94,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             button.toolTip = tip
         }
 
+        linkButton.target = self
+        linkButton.action = #selector(editLink(_:))
+        linkButton.toolTip = "Link (⌘K)"
+
         imageButton.target = self
         imageButton.action = #selector(insertImage(_:))
         imageButton.toolTip = "Insert Image"
@@ -115,7 +121,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             contentView.addSubview(view)
         }
         for control in [stylePopUp, boldButton, italicButton, strikethroughButton, codeButton, subscriptButton, superscriptButton,
-                        imageButton, viewModeControl] {
+                        linkButton, imageButton, viewModeControl] {
             control.translatesAutoresizingMaskIntoConstraints = false
             headerView.addSubview(control)
         }
@@ -142,6 +148,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             superscriptButton.leadingAnchor.constraint(equalTo: subscriptButton.trailingAnchor, constant: 4),
             superscriptButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
 
+            linkButton.trailingAnchor.constraint(equalTo: imageButton.leadingAnchor, constant: -4),
+            linkButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
             imageButton.trailingAnchor.constraint(equalTo: viewModeControl.leadingAnchor, constant: -8),
             imageButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
 
@@ -368,7 +376,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
                     // styles, and the whole line has its first character's
                     // fence.
                     let fence = style == .code ? storage.attribute(.codeFence, at: line.location, effectiveRange: nil) as? CodeFence : nil
-                    let hasInlineStyles = style == .code && InlineStyle.allCases.contains { contains($0.key, in: line) }
+                    let hasInlineStyles = style == .code && NSAttributedString.Key.inlineFormatting.contains { contains($0, in: line) }
                     if !hasUniform(.blockStyle, style.rawValue, in: line) || contains(.listLevel, in: line)
                         || !hasUniformFence(fence, in: line) || hasInlineStyles {
                         changeAttributes(in: line) {
@@ -377,8 +385,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
                             storage.removeAttribute(.codeFence, range: line)
                             if let fence { storage.addAttribute(.codeFence, value: fence, range: line) }
                             if style == .code {
-                                for inlineStyle in InlineStyle.allCases {
-                                    storage.removeAttribute(inlineStyle.key, range: line)
+                                for key in NSAttributedString.Key.inlineFormatting {
+                                    storage.removeAttribute(key, range: line)
                                 }
                             }
                             storage.applyInlineStyles(in: line)

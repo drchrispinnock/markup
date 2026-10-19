@@ -58,6 +58,10 @@ enum MainMenu {
                            keyEquivalent: "-").keyEquivalentModifierMask = [.command, .control]
         formatMenu.addItem(withTitle: "Superscript", action: #selector(EditorViewController.toggleSuperscript(_:)),
                            keyEquivalent: "=").keyEquivalentModifierMask = [.command, .control]
+        formatMenu.addItem(withTitle: "Highlight", action: #selector(EditorViewController.toggleHighlight(_:)),
+                           keyEquivalent: "H")
+        formatMenu.addItem(.separator())
+        formatMenu.addItem(withTitle: "Link…", action: #selector(EditorViewController.editLink(_:)), keyEquivalent: "k")
         mainMenu.addItem(submenu: formatMenu, title: "Format")
 
         let viewMenu = NSMenu(title: "View")

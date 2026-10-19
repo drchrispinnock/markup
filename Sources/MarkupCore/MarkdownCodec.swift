@@ -53,6 +53,9 @@ public struct CodeFence: Hashable, Sendable {
 /// backslash, so it survives a save: a paragraph "# not a heading" is written
 /// as "\# not a heading", and a bullet "[ ] not a task" as "- \[ ] not a task".
 /// A paragraph that would open a code block is escaped the same way.
+///
+/// An HTML comment that starts on one line and ends on a later one stays
+/// part of the line it starts on, so that line's text holds newlines.
 public enum MarkdownCodec {
     public static func lines(fromMarkdown markdown: String) -> [Line] {
         let raw = markdown.split(separator: "\n", omittingEmptySubsequences: false)
@@ -71,7 +74,15 @@ public enum MarkdownCodec {
                closingFence(of: fence, in: raw, after: index) != nil {
                 lines.append(Line(style: .paragraph, text: String(text.dropFirst())))
             } else {
-                lines.append(line(fromMarkdown: text))
+                var line = line(fromMarkdown: text)
+                // A comment that carries on over lines is kept with its
+                // first line, as it was written.
+                if HTMLComment.opensUnclosed(text),
+                   let end = raw[(index + 1)...].firstIndex(where: { HTMLComment.closes($0) }) {
+                    line.text += "\n" + raw[(index + 1)...end].joined(separator: "\n")
+                    index = end
+                }
+                lines.append(line)
             }
             index += 1
         }

@@ -1295,6 +1295,132 @@ import Testing
         #expect(editor.markdown == "H~2~O and x^2^ but x^2 + y^2 and my_var name")
     }
 
+    @Test func linksTheSelection() {
+        type("one two three")
+        select(4, 3)
+        step { editor.setLink("https://example.com", in: editor.linkTargetRange()) }
+        #expect(editor.markdown == "one [two](https://example.com) three")
+        #expect(storage.attribute(.foregroundColor, at: 4, effectiveRange: nil) as? NSColor == InlineStyle.linkColor)
+        #expect(storage.attribute(.underlineStyle, at: 4, effectiveRange: nil) != nil)
+        #expect(storage.attribute(.toolTip, at: 4, effectiveRange: nil) as? String == "https://example.com")
+        #expect(storage.attribute(.underlineStyle, at: 3, effectiveRange: nil) == nil)
+        textView.undoManager?.undo()
+        #expect(editor.markdown == "one two three")
+    }
+
+    @Test func typingContinuesALinkOnlyInsideIt() {
+        type("a b c")
+        select(2, 1)
+        step { editor.setLink("notes.md", in: editor.linkTargetRange()) }
+        select(3)
+        type("x")
+        #expect(editor.markdown == "a [b](notes.md)x c")
+        select(2)
+        type("y")
+        #expect(editor.markdown == "a y[b](notes.md)x c")
+        // Typing inside a link extends it.
+        select(3, 2)
+        step { editor.setLink("notes.md", in: editor.linkTargetRange()) }
+        select(4)
+        type("z")
+        #expect(editor.markdown == "a y[bzx](notes.md) c")
+    }
+
+    @Test func caretInALinkEditsOrRemovesTheWholeLink() {
+        editor.load(markdown: "see [the docs](a.md) now")
+        select(8)
+        #expect(editor.linkTargetRange() == NSRange(location: 4, length: 8))
+        step { editor.setLink("b.md", in: editor.linkTargetRange()) }
+        #expect(editor.markdown == "see [the docs](b.md) now")
+        step { editor.setLink(nil, in: editor.linkTargetRange()) }
+        #expect(editor.markdown == "see the docs now")
+        #expect(storage.attribute(.foregroundColor, at: 5, effectiveRange: nil) as? NSColor == .textColor)
+        #expect(storage.attribute(.underlineStyle, at: 5, effectiveRange: nil) == nil)
+    }
+
+    @Test func linkWithNoSelectionInsertsTheLinkAsItsText() {
+        type("go ")
+        step { editor.setLink("https://x.org", in: editor.linkTargetRange()) }
+        #expect(editor.markdown == "go [https://x.org](https://x.org)")
+        type(" on")
+        #expect(editor.markdown == "go [https://x.org](https://x.org) on")
+    }
+
+    @Test func typedLinkMarkdownBecomesALink() {
+        type("see [the *docs*](my notes.md) or [x](<my notes.md>) now")
+        #expect(storage.string == "see [the docs](my notes.md) or x now")
+        // A destination with a space needs angle brackets, so the first
+        // isn't a link.
+        #expect(editor.markdown == "see [the *docs*](my notes.md) or [x](<my notes.md>) now")
+        type(" [a](b)")
+        #expect(storage.string.hasSuffix("now a"))
+        #expect(editor.markdown.hasSuffix("now [a](b)"))
+    }
+
+    @Test func loadsAndSavesLinksWithStyles() {
+        let markdown = "**[a](x)** and [**b** c](<y z>) and [`d`](e)"
+        editor.load(markdown: markdown)
+        #expect(storage.string == "a and b c and d")
+        #expect(editor.markdown == markdown)
+    }
+
+    @Test func codeBlocksArentLinked() {
+        editor.load(markdown: "a\n```\ncode\n```")
+        select(0, storage.length)
+        step { editor.setLink("x", in: editor.linkTargetRange()) }
+        #expect(editor.markdown == "[a](x)\n```\ncode\n```")
+    }
+
+    @Test func highlightTogglesTheSelectionInYellow() {
+        type("one two")
+        select(4, 3)
+        step { editor.toggleHighlight(nil) }
+        #expect(editor.markdown == "one ==two==")
+        #expect(storage.attribute(.backgroundColor, at: 4, effectiveRange: nil) as? NSColor == InlineStyle.highlightColor)
+        #expect(storage.attribute(.backgroundColor, at: 3, effectiveRange: nil) == nil)
+        let item = NSMenuItem(title: "Highlight", action: #selector(EditorViewController.toggleHighlight(_:)), keyEquivalent: "")
+        #expect(editor.validateMenuItem(item) && item.state == .on)
+        step { editor.toggleHighlight(nil) }
+        #expect(editor.markdown == "one two")
+        #expect(storage.attribute(.backgroundColor, at: 4, effectiveRange: nil) == nil)
+    }
+
+    @Test func typedEqualsSignsBecomeHighlight() {
+        type("a ==big deal== and x == y")
+        #expect(storage.string == "a big deal and x == y")
+        #expect(storage.inlineStyles(at: 2) == [.highlight])
+        #expect(editor.markdown == "a ==big deal== and x == y")
+    }
+
+    @Test func hidesHTMLComments() {
+        let markdown = "# Title\n<!-- hidden -->\ntext <!-- a *b* --> more\n<!--\n- multi\n# line\n-->\nend"
+        editor.load(markdown: markdown)
+        #expect(storage.string == "Title\n\u{FFFC}\ntext \u{FFFC} more\n\u{FFFC}\nend")
+        #expect(editor.markdown == markdown)
+        // Lines of only comments take no space; others are as usual.
+        let layoutManager = textView.layoutManager!
+        textView.layoutManager?.ensureLayout(for: textView.textContainer!)
+        func height(at index: Int) -> CGFloat {
+            layoutManager.lineFragmentRect(forGlyphAt: layoutManager.glyphIndexForCharacter(at: index), effectiveRange: nil).height
+        }
+        #expect(height(at: 6) < 1 && height(at: 21) < 1)
+        #expect(height(at: 8) > 10)
+        // Copying writes headings without their markers, as ever.
+        #expect(editor.plainText(for: NSRange(location: 0, length: storage.length)) == String(markdown.dropFirst(2)))
+    }
+
+    @Test func typedCommentsAreHidden() {
+        type("a <!-- note --> b")
+        #expect(storage.string == "a \u{FFFC} b")
+        #expect(editor.markdown == "a <!-- note --> b")
+    }
+
+    @Test func linkButtonIsLeftOfTheImageButton() {
+        editor.view.window!.layoutIfNeeded()
+        #expect(editor.linkButton.frame.maxX < editor.imageButton.frame.minX)
+        #expect(editor.linkButton.frame.minX > editor.superscriptButton.frame.maxX + 50)
+    }
+
     @Test func subscriptAndSuperscriptButtonsAreLaidOutAfterCode() {
         editor.view.window!.layoutIfNeeded()
         #expect(editor.subscriptButton.frame.minX > editor.codeButton.frame.maxX)

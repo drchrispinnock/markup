@@ -14,6 +14,15 @@ extension NSAttributedString.Key {
     static let inlineSubscript = NSAttributedString.Key("MarkupInlineSubscript")
     /// True on superscript characters (`x^2^`).
     static let inlineSuperscript = NSAttributedString.Key("MarkupInlineSuperscript")
+    /// True on highlighted characters (`==highlight==`).
+    static let inlineHighlight = NSAttributedString.Key("MarkupInlineHighlight")
+    /// The destination, a String, on the characters of a link's text
+    /// (`[text](destination)`).
+    static let markdownLink = NSAttributedString.Key("MarkupLink")
+
+    /// Everything that formats text within a line: the inline styles and
+    /// links. Code blocks have none of it.
+    static let inlineFormatting = InlineStyle.allCases.map(\.key) + [.markdownLink]
 }
 
 extension InlineStyle {
@@ -26,7 +35,28 @@ extension InlineStyle {
         case .code: .inlineCode
         case .subscript: .inlineSubscript
         case .superscript: .inlineSuperscript
+        case .highlight: .inlineHighlight
         }
+    }
+
+    /// The colour of links: navy, or in dark mode, where navy can't be read,
+    /// a light navy blue.
+    static let linkColor = NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(srgbRed: 0.55, green: 0.65, blue: 1, alpha: 1) : NSColor(srgbRed: 0, green: 0, blue: 0.5, alpha: 1)
+    }
+
+    /// The background of highlighted text, like a highlighter pen: yellow,
+    /// or in dark mode a dimmer yellow that light text can be read on.
+    static let highlightColor = NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(srgbRed: 0.6, green: 0.5, blue: 0, alpha: 0.75) : NSColor(srgbRed: 1, green: 0.93, blue: 0.25, alpha: 1)
+    }
+
+    /// The background behind text with `styles`, if any. Highlight wins
+    /// over code's shading.
+    static func background(for styles: Set<InlineStyle>) -> NSColor? {
+        styles.contains(.highlight) ? highlightColor : styles.contains(.code) ? codeBackground : nil
     }
 
     /// The shading behind inline code: a light grey, or in dark mode a dark
@@ -64,9 +94,9 @@ extension BlockStyle {
 }
 
 extension Dictionary where Key == NSAttributedString.Key, Value == Any {
-    /// These attributes with just `styles`, and the font, strikethrough,
-    /// shading and baseline offset to show them.
-    func withInlineStyles(_ styles: Set<InlineStyle>) -> [NSAttributedString.Key: Any] {
+    /// These attributes with just `styles` and `link`, and the font,
+    /// strikethrough, shading, baseline offset and link colour to show them.
+    func withInlineStyles(_ styles: Set<InlineStyle>, link: String? = nil) -> [NSAttributedString.Key: Any] {
         var attributes = self
         for style in InlineStyle.allCases {
             attributes[style.key] = styles.contains(style) ? true : nil
@@ -74,8 +104,12 @@ extension Dictionary where Key == NSAttributedString.Key, Value == Any {
         let blockStyle = (attributes[.blockStyle] as? Int).flatMap(BlockStyle.init) ?? .paragraph
         attributes[.font] = blockStyle.font(for: styles)
         attributes[.strikethroughStyle] = styles.contains(.strikethrough) ? NSUnderlineStyle.single.rawValue : nil
-        attributes[.backgroundColor] = styles.contains(.code) ? InlineStyle.codeBackground : nil
+        attributes[.backgroundColor] = InlineStyle.background(for: styles)
         attributes[.baselineOffset] = blockStyle.baselineOffset(for: styles)
+        attributes[.markdownLink] = link
+        attributes[.foregroundColor] = link == nil ? NSColor.textColor : InlineStyle.linkColor
+        attributes[.underlineStyle] = link == nil ? nil : NSUnderlineStyle.single.rawValue
+        attributes[.toolTip] = link
         return attributes
     }
 }
@@ -95,8 +129,9 @@ extension NSAttributedString {
 }
 
 extension NSMutableAttributedString {
-    /// Sets the font, strikethrough, shading and baseline offset of every
-    /// character in `range` from its line's style and its inline styles.
+    /// Sets the font, strikethrough, shading, baseline offset and link colour
+    /// of every character in `range` from its line's style, its inline
+    /// styles and its link.
     /// Needed wherever a line's style is set, since that sets the plain font.
     func applyInlineStyles(in range: NSRange) {
         enumerateAttributes(in: range) { attributes, run, _ in
@@ -111,8 +146,10 @@ extension NSMutableAttributedString {
             } else if attributes[.strikethroughStyle] != nil {
                 removeAttribute(.strikethroughStyle, range: run)
             }
-            if attributes[.inlineCode] != nil {
-                addAttribute(.backgroundColor, value: InlineStyle.codeBackground, range: run)
+            if let background = InlineStyle.background(for: styles) {
+                if attributes[.backgroundColor] as? NSColor != background {
+                    addAttribute(.backgroundColor, value: background, range: run)
+                }
             } else if attributes[.backgroundColor] != nil {
                 removeAttribute(.backgroundColor, range: run)
             }
@@ -122,6 +159,17 @@ extension NSMutableAttributedString {
                 }
             } else if attributes[.baselineOffset] != nil {
                 removeAttribute(.baselineOffset, range: run)
+            }
+            if let link = attributes[.markdownLink] as? String {
+                if attributes[.toolTip] as? String != link {
+                    addAttributes([.foregroundColor: InlineStyle.linkColor, .underlineStyle: NSUnderlineStyle.single.rawValue,
+                                   .toolTip: link], range: run)
+                }
+            } else if attributes[.toolTip] != nil {
+                // Was a link.
+                addAttribute(.foregroundColor, value: NSColor.textColor, range: run)
+                removeAttribute(.underlineStyle, range: run)
+                removeAttribute(.toolTip, range: run)
             }
         }
     }

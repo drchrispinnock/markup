@@ -24,6 +24,10 @@ extension EditorViewController {
         toggle(.code, actionName: "Code")
     }
 
+    @objc func toggleHighlight(_ sender: Any?) {
+        toggle(.highlight, actionName: "Highlight")
+    }
+
     @objc func toggleSubscript(_ sender: Any?) {
         toggle(.subscript, actionName: "Subscript")
     }
@@ -32,7 +36,8 @@ extension EditorViewController {
         toggle(.superscript, actionName: "Superscript")
     }
 
-    func button(for style: InlineStyle) -> NSButton {
+    /// The header button for `style`. Highlight has only a menu item.
+    func button(for style: InlineStyle) -> NSButton? {
         switch style {
         case .bold: boldButton
         case .italic: italicButton
@@ -40,6 +45,7 @@ extension EditorViewController {
         case .code: codeButton
         case .subscript: subscriptButton
         case .superscript: superscriptButton
+        case .highlight: nil
         }
     }
 
@@ -120,13 +126,16 @@ extension EditorViewController {
         return selection.location < NSMaxRange(contents) ? storage.inlineStyles(at: selection.location) : []
     }
 
-    /// Turns each style's button on if the selection all has the style, or
-    /// if typing at the caret would give it.
-    func updateInlineStyleButtons() {
+    /// Whether the selection all has `style`, or typing at the caret would
+    /// give it. Its button and menu item are ticked then.
+    func isOn(_ style: InlineStyle) -> Bool {
         let selection = textView.selectedRange()
+        return selection.length > 0 ? isAll(style, in: selection) : textView.typingAttributes[style.key] != nil
+    }
+
+    func updateInlineStyleButtons() {
         for style in InlineStyle.allCases {
-            let isOn = selection.length > 0 ? isAll(style, in: selection) : textView.typingAttributes[style.key] != nil
-            button(for: style).state = isOn ? .on : .off
+            button(for: style)?.state = isOn(style) ? .on : .off
         }
     }
 }

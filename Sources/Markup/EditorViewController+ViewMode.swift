@@ -40,8 +40,9 @@ extension EditorViewController {
         viewModeControl.selectedSegment = showMarkdown ? 1 : 0
         stylePopUp.isEnabled = !showMarkdown
         imageButton.isEnabled = !showMarkdown
+        linkButton.isEnabled = !showMarkdown
         for style in InlineStyle.allCases {
-            button(for: style).isEnabled = !showMarkdown
+            button(for: style)?.isEnabled = !showMarkdown
         }
         moveCaret(to: caret)
         updateForSelection()
@@ -96,6 +97,11 @@ extension EditorViewController: NSMenuItemValidation {
             return !isShowingMarkdown
         case #selector(toggleCode(_:)):
             menuItem.state = codeButton.state
+            return !isShowingMarkdown
+        case #selector(toggleHighlight(_:)):
+            menuItem.state = isOn(.highlight) ? .on : .off
+            return !isShowingMarkdown
+        case #selector(editLink(_:)):
             return !isShowingMarkdown
         case #selector(toggleSubscript(_:)):
             menuItem.state = subscriptButton.state

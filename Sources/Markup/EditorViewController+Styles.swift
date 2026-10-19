@@ -20,8 +20,8 @@ extension EditorViewController {
                 storage.addAttributes(style.attributes, range: lines)
                 if style == .code {
                     // Code keeps its text as typed, without inline styles.
-                    for inlineStyle in InlineStyle.allCases {
-                        storage.removeAttribute(inlineStyle.key, range: lines)
+                    for key in NSAttributedString.Key.inlineFormatting {
+                        storage.removeAttribute(key, range: lines)
                     }
                 } else {
                     storage.removeAttribute(.codeFence, range: lines)
@@ -65,11 +65,12 @@ extension EditorViewController {
         }
         defer { updateInlineStyleButtons() }
         let inlineStyles = inlineStylesAtCaret()
+        let link = linkForTyping()
         let caret = textView.selectedRange().location
         let line = lineRange(at: caret)
         if let item = listItem(at: line) {
             emptyLineStyle = nil
-            textView.typingAttributes = item.lineAttributes.withInlineStyles(inlineStyles)
+            textView.typingAttributes = item.lineAttributes.withInlineStyles(inlineStyles, link: link)
             stylePopUp.selectItem(withTag: BlockStyle.paragraph.rawValue)
             return
         }
@@ -83,7 +84,7 @@ extension EditorViewController {
             style = .paragraph
             emptyLineStyle = nil
         }
-        var attributes = style.attributes.withInlineStyles(inlineStyles)
+        var attributes = style.attributes.withInlineStyles(inlineStyles, link: link)
         if style == .code {
             // New code lines belong to the same block.
             attributes[.codeFence] = line.length > 0

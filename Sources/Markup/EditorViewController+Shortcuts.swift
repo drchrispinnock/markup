@@ -8,9 +8,11 @@ extension EditorViewController {
     /// - "- " makes a paragraph a bullet, and "[ ] " or "[x] " at the start of
     ///   a bullet makes it a checkbox.
     /// - "*italic*", "**bold**", "***both***", "~~strikethrough~~", "`code`",
-    ///   "~subscript~" and "^superscript^" anywhere in a line become styled
+    ///   "~subscript~", "^superscript^" and "==highlight==" anywhere in a line become styled
     ///   text.
     /// - "![alt](path)" anywhere in a line becomes the image.
+    /// - "[text](destination)" anywhere in a line becomes a link.
+    /// - "<!-- comment -->" anywhere in a line is hidden.
     ///
     /// Lines of code blocks, and inline code, are left as typed.
     ///
@@ -42,6 +44,8 @@ extension EditorViewController {
             }
             convertEmphasis(in: lineRange(at: location), after: edit)
             convertImages(in: lineRange(at: location), after: edit)
+            convertLinks(in: lineRange(at: location), after: edit)
+            convertComments(in: lineRange(at: location), after: edit)
             location = NSMaxRange(lineRange(at: location))
         }
     }
@@ -103,6 +107,59 @@ extension EditorViewController {
         }
     }
 
+    /// Hides typed or pasted HTML comments that the edit touched.
+    private func convertComments(in line: NSRange, after edit: NSRange) {
+        let contents = contentsRange(of: line)
+        let string = storage.string as NSString
+        for comment in HTMLComment.ranges(in: string.substring(with: contents)).reversed() {
+            let range = NSRange(location: contents.location + comment.lowerBound, length: comment.count)
+            let touched = edit.length > 0
+                ? NSIntersectionRange(range, edit).length > 0
+                : range.location < edit.location && edit.location < NSMaxRange(range)
+            guard touched, !isInlineCode(range), !followsUnclosedBacktick(range, in: contents) else { continue }
+
+            let selection = textView.selectedRange()
+            let hidden = HTMLComment.attachmentString(markdown: string.substring(with: range),
+                                                      attributes: storage.attributes(at: range.location, effectiveRange: nil))
+            replaceCharacters(in: range, with: hidden)
+            let caret = selection.location >= NSMaxRange(range) ? selection.location - range.length + 1
+                : selection.location > range.location ? range.location + 1
+                : selection.location
+            textView.setSelectedRange(NSRange(location: caret, length: 0))
+        }
+    }
+
+    /// Replaces typed or pasted link Markdown that the edit touched with the
+    /// linked text.
+    private func convertLinks(in line: NSRange, after edit: NSRange) {
+        let contents = contentsRange(of: line)
+        let string = storage.string as NSString
+        for link in InlineMarkdown.links(in: string.substring(with: contents)).reversed() {
+            let range = NSRange(location: contents.location + link.range.lowerBound, length: link.range.count)
+            let text = NSRange(location: contents.location + link.text.lowerBound, length: link.text.count)
+            let touched = edit.length > 0
+                ? NSIntersectionRange(range, edit).length > 0
+                : range.location < edit.location && edit.location < NSMaxRange(range)
+            guard touched, !isInlineCode(NSRange(location: range.location, length: 1)),
+                  !isInlineCode(NSRange(location: NSMaxRange(text), length: NSMaxRange(range) - NSMaxRange(text))),
+                  !followsUnclosedBacktick(range, in: contents)
+            else { continue }
+
+            let selection = textView.selectedRange()
+            changeAttributes(in: text) {
+                storage.addAttribute(.markdownLink, value: link.destination, range: text)
+                storage.applyInlineStyles(in: text)
+            }
+            let closing = NSRange(location: NSMaxRange(text), length: NSMaxRange(range) - NSMaxRange(text))
+            replaceCharacters(in: closing, with: NSAttributedString())
+            replaceCharacters(in: NSRange(location: range.location, length: 1), with: NSAttributedString())
+            let caret = selection.location >= NSMaxRange(range) ? selection.location - (range.length - text.length)
+                : selection.location > range.location ? min(selection.location - 1, NSMaxRange(text) - 1)
+                : selection.location
+            textView.setSelectedRange(NSRange(location: caret, length: 0))
+        }
+    }
+
     /// Whether an odd number of backticks that aren't inline code come
     /// before `range` on its line, so it may be inside inline code that is
     /// still being typed.
@@ -129,14 +186,14 @@ extension EditorViewController {
 
     /// Replaces typed or pasted inline styles that the edit touched, or that
     /// the edit was typed just after, with styled text. A just-typed closing
-    /// delimiter (asterisk, tilde, backtick or caret) waits for
+    /// delimiter (asterisk, tilde, backtick, caret or equals sign) waits for
     /// the next character: an asterisk may be the first of two, and the next
     /// character shouldn't take the style.
     private func convertEmphasis(in line: NSRange, after edit: NSRange) {
         let contents = contentsRange(of: line)
         let string = storage.string as NSString
         let typedDelimiter = edit.length == 1 && NSMaxRange(edit) <= string.length
-            && "*~`^".utf16.contains(string.character(at: edit.location))
+            && "*~`^=".utf16.contains(string.character(at: edit.location))
         let found = InlineMarkdown.emphases(in: string.substring(with: contents)).map { emphasis in
             (opening: NSRange(location: contents.location + emphasis.opening.lowerBound, length: emphasis.opening.count),
              closing: NSRange(location: contents.location + emphasis.closing.lowerBound, length: emphasis.closing.count),

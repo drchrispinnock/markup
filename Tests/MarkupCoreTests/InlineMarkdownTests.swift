@@ -123,7 +123,7 @@ import Testing
         spans.flatMap { span in
             span.text.map {
                 "\($0)\(span.bold ? "B" : "")\(span.italic ? "I" : "")\(span.strikethrough ? "S" : "")\(span.code ? "C" : "")"
-                    + "\(span.subscript ? "~" : "")\(span.superscript ? "^" : "")"
+                    + "\(span.subscript ? "~" : "")\(span.superscript ? "^" : "")\(span.highlight ? "=" : "")"
             }
         }
     }
@@ -137,6 +137,7 @@ import Testing
         ([InlineStyle.subscript, .superscript, .italic, .code], ["a", "~", "^", "`"]),
         ([InlineStyle.subscript, .superscript, .bold, .strikethrough], ["a", "~", "*", "~~"]),
         ([InlineStyle.subscript, .strikethrough, .italic, .superscript], ["a", "~", "~~", "~~~"]),
+        ([InlineStyle.highlight, .strikethrough, .bold, .code], ["a", "=", "==", "~~"]),
     ])
     func roundTripsAnyMixOfEmphasisBetweenWords(styleList: [InlineStyle], words: [String]) {
         func styles(_ bits: Int) -> Set<InlineStyle> {
@@ -194,6 +195,73 @@ import Testing
         #expect(InlineMarkdown.markdown(for: [InlineSpan("my_var_name")]) == "my_var_name")
         #expect(InlineMarkdown.markdown(for: [InlineSpan("~x~")]) == #"\~x\~"#)
         #expect(InlineMarkdown.markdown(for: [InlineSpan("x^2 + y^2")]) == "x^2 + y^2")
+    }
+
+    @Test func readsAndWritesHighlight() {
+        #expect(InlineMarkdown.spans(in: "a ==marked text== b") == [
+            InlineSpan("a "), InlineSpan("marked text", styles: [.highlight]), InlineSpan(" b"),
+        ])
+        #expect(InlineMarkdown.spans(in: "==~~**x**~~==") == [InlineSpan("x", styles: [.highlight, .strikethrough, .bold])])
+        for text in ["a == b", "x = 1", "===x===", "=x=", "==open"] {
+            #expect(InlineMarkdown.spans(in: text) == [InlineSpan(text)], "\(text)")
+        }
+        #expect(InlineMarkdown.markdown(for: [InlineSpan("x", styles: [.highlight, .strikethrough, .bold])]) == "==~~**x**~~==")
+        #expect(InlineMarkdown.markdown(for: [InlineSpan("a == b")]) == "a == b")
+        #expect(InlineMarkdown.markdown(for: [InlineSpan("==not==")]) == #"\=\=not\=\="#)
+    }
+
+    @Test func keepsHTMLCommentsWhole() {
+        #expect(InlineMarkdown.spans(in: "a <!-- *not* ![i](p.png) [l](x) --> *b*") == [
+            InlineSpan("a <!-- *not* ![i](p.png) [l](x) --> "), InlineSpan("b", styles: [.italic]),
+        ])
+        #expect(InlineMarkdown.spans(in: "`<!--` x -->") == [InlineSpan("<!--", styles: [.code]), InlineSpan(" x -->")])
+        #expect(InlineMarkdown.markdown(for: [InlineSpan("<!-- *x* -->"), InlineSpan("y", styles: [.bold])])
+            == "<!-- *x* -->**y**")
+        #expect(InlineMarkdown.markdown(for: [InlineSpan("<!-- *x* --> *z*")]) == #"<!-- *x* --> \*z\*"#)
+        #expect(HTMLComment.ranges(in: "a<!--b-->c<!--d") == [1..<9])
+        #expect(HTMLComment.opensUnclosed("a <!-- b") && !HTMLComment.opensUnclosed("a <!-- b --> c"))
+    }
+
+    @Test func readsLinks() {
+        #expect(InlineMarkdown.spans(in: "see [the docs](https://example.com) now") == [
+            InlineSpan("see "), InlineSpan("the docs", link: "https://example.com"), InlineSpan(" now"),
+        ])
+        #expect(InlineMarkdown.spans(in: "[**a** b](notes.md)") == [
+            InlineSpan("a", styles: [.bold], link: "notes.md"), InlineSpan(" b", link: "notes.md"),
+        ])
+        #expect(InlineMarkdown.spans(in: "**[a](x) b**") == [InlineSpan("a", styles: [.bold], link: "x"),
+                                                            InlineSpan(" b", styles: [.bold])])
+        #expect(InlineMarkdown.spans(in: "[a [b] c](<my file.md> \"title\")") == [InlineSpan("a [b] c", link: "my file.md")])
+        #expect(InlineMarkdown.spans(in: "[`a]`](x)") == [InlineSpan("a]", styles: [.code], link: "x")])
+        #expect(InlineMarkdown.spans(in: "[ref]()") == [InlineSpan("ref", link: "")])
+        #expect(InlineMarkdown.links(in: "a [b](c)") == [InlineMarkdown.Link(range: 2..<8, text: 3..<4, destination: "c")])
+        // Emphasis can't pair across a link's brackets.
+        #expect(InlineMarkdown.spans(in: "*a [b* c](x)") == [InlineSpan("*a "), InlineSpan("b* c", link: "x")])
+    }
+
+    @Test(arguments: ["[]()", "[a]", "[a] (b)", "[a](b", "\\[a](b)", "![a](b.png)", "`[a](b)`", "[a\\](b)"])
+    func leavesOtherBracketsAsText(text: String) {
+        #expect(InlineMarkdown.spans(in: text).allSatisfy { $0.link == nil })
+    }
+
+    @Test func writesLinks() {
+        #expect(InlineMarkdown.markdown(for: [InlineSpan("see "), InlineSpan("docs", link: "https://x.org")])
+            == "see [docs](https://x.org)")
+        #expect(InlineMarkdown.markdown(for: [InlineSpan("a", styles: [.bold], link: "x"), InlineSpan(" b", link: "x")])
+            == "[**a** b](x)")
+        #expect(InlineMarkdown.markdown(for: [InlineSpan("all", styles: [.bold], link: "x")]) == "**[all](x)**")
+        #expect(InlineMarkdown.markdown(for: [InlineSpan("a", link: "my file.md")]) == "[a](<my file.md>)")
+        #expect(InlineMarkdown.markdown(for: [InlineSpan("a]", link: "x")]) == #"[a\]](x)"#)
+        #expect(InlineMarkdown.markdown(for: [InlineSpan("[not](a link)")]) == "[not](a link)")
+        #expect(InlineMarkdown.markdown(for: [InlineSpan("[not](link)")]) == #"\[not\](link)"#)
+        #expect(InlineMarkdown.markdown(for: [InlineSpan("a", link: "x"), InlineSpan("b", link: "y")]) == "[a](x)[b](y)")
+    }
+
+    @Test(arguments: ["[a](b) and [**c** ~d~](<e f>)", "**[a](b)**", "[a ![i](p.png) b](c)", "x [`[y]`](z) w",
+                      "[a](b)*c*"])
+    func roundTripsLinks(markdown: String) {
+        let spans = InlineMarkdown.spans(in: markdown)
+        #expect(InlineMarkdown.spans(in: InlineMarkdown.markdown(for: spans)) == spans, "\(InlineMarkdown.markdown(for: spans))")
     }
 
     @Test func keepsTheTextWhenEmphasisChangesMidWord() {

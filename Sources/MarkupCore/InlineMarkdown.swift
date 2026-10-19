@@ -8,9 +8,11 @@ public enum InlineStyle: CaseIterable, Sendable {
     case code
     case `subscript`
     case superscript
+    case highlight
 
     /// The delimiter written on each side: `**bold**`, `*italic*`,
-    /// `~~strikethrough~~`, `` `code` ``, `H~2~O`, `x^2^`. Code needs more
+    /// `~~strikethrough~~`, `` `code` ``, `H~2~O`, `x^2^`, `==highlight==`.
+    /// Code needs more
     /// backticks if its text has some.
     public var delimiter: String {
         switch self {
@@ -20,18 +22,22 @@ public enum InlineStyle: CaseIterable, Sendable {
         case .code: "`"
         case .subscript: "~"
         case .superscript: "^"
+        case .highlight: "=="
         }
     }
 }
 
-/// A run of text with the same inline styles.
+/// A run of text with the same inline styles, and the same link if any.
 public struct InlineSpan: Equatable, Sendable {
     public var text: String
     public var styles: Set<InlineStyle>
+    /// Where the text links to: a URL, a file, or any other reference.
+    public var link: String?
 
-    public init(_ text: String, styles: Set<InlineStyle> = []) {
+    public init(_ text: String, styles: Set<InlineStyle> = [], link: String? = nil) {
         self.text = text
         self.styles = styles
+        self.link = link
     }
 
     public init(_ text: String, bold: Bool = false, italic: Bool = false, strikethrough: Bool = false,
@@ -47,13 +53,16 @@ public struct InlineSpan: Equatable, Sendable {
     public var code: Bool { styles.contains(.code) }
     public var `subscript`: Bool { styles.contains(.subscript) }
     public var superscript: Bool { styles.contains(.superscript) }
+    public var highlight: Bool { styles.contains(.highlight) }
 }
 
 /// Bold, italic, strikethrough, code, subscript and superscript within a
 /// line: `**bold**`, `*italic*`, `***both***`, `~~strikethrough~~`,
-/// `` `code` ``, `H~2~O` and `x^2^`. Images are kept whole, as their
-/// Markdown. A backslash makes an asterisk, tilde, backtick or caret literal
-/// (`\*`, `\~`, `` \` ``, `\^`).
+/// `` `code` ``, `H~2~O`, `x^2^` and `==highlight==`, and links,
+/// `[text](destination)`. Images and HTML comments are kept whole, as their
+/// Markdown. A
+/// backslash makes an asterisk, tilde, backtick, caret, equals sign or
+/// bracket literal (`\*`, `\~`, `` \` ``, `\^`, `\=`, `\[`, `\]`).
 ///
 /// Code spans are read first, as in CommonMark: a run of backticks up to the
 /// next run of the same length, with the text between taken literally (and
@@ -64,12 +73,18 @@ public struct InlineSpan: Equatable, Sendable {
 /// can open if it isn't followed by whitespace, and can close if it isn't
 /// preceded by whitespace. CommonMark's "rule of 3" applies to asterisk runs
 /// that can do both. Tildes pair up like asterisks, two for strikethrough and
-/// one for subscript, so `~~~x~~~` is both.
+/// one for subscript, so `~~~x~~~` is both. Highlight is a pair of equals
+/// signs, matched as strikethrough's tildes are.
 ///
 /// Subscript (`~`) and superscript (`^`) are as in Pandoc: they may be inside
 /// a word, and the text between can't contain whitespace (except within
 /// code or an image), so `x^2 + y^2` and `a ~ b ~ c` stay as they are.
 /// Underscores aren't read as emphasis.
+///
+/// A link's text is read on its own, so emphasis inside it pairs up inside
+/// it, and it can't hold another link. Code spans take precedence over its
+/// brackets. Text with no characters, `[](x)`, isn't a link. A link's title,
+/// as in `[a](b "title")`, isn't kept.
 public enum InlineMarkdown {
     /// A styled range found in Markdown, with its opening and closing
     /// delimiters as UTF-16 offsets.
@@ -77,6 +92,14 @@ public enum InlineMarkdown {
         public var opening: Range<Int>
         public var closing: Range<Int>
         public var style: InlineStyle
+    }
+
+    /// A link found in Markdown: its whole range, the range of its text,
+    /// as UTF-16 offsets, and its destination.
+    public struct Link: Equatable, Sendable {
+        public var range: Range<Int>
+        public var text: Range<Int>
+        public var destination: String
     }
 
     public static func spans(in text: String) -> [InlineSpan] {
@@ -87,11 +110,15 @@ public enum InlineMarkdown {
         parse(text).emphases
     }
 
+    public static func links(in text: String) -> [Link] {
+        parse(text).links
+    }
+
     /// Markdown for `spans`. Spaces at the edges of styled text are written
     /// outside the delimiters, since a style can't start or end with one.
     /// Subscript and superscript can't hold whitespace, so they leave out
-    /// spaces. Literal asterisks, tildes and carets are escaped
-    /// only if they would otherwise be read as delimiters.
+    /// spaces. Literal asterisks, tildes, carets and brackets are escaped
+    /// only if they would otherwise be read as delimiters or links.
     public static func markdown(for spans: [InlineSpan]) -> String {
         let units = units(of: spans)
         let plain = write(units, escaping: false)
@@ -104,7 +131,10 @@ public enum InlineMarkdown {
     private static let tilde = UInt16(UInt8(ascii: "~"))
     private static let backtick = UInt16(UInt8(ascii: "`"))
     private static let caret = UInt16(UInt8(ascii: "^"))
-    private static let escapable = [star, tilde, backtick, caret]
+    private static let equals = UInt16(UInt8(ascii: "="))
+    private static let openBracket = UInt16(UInt8(ascii: "["))
+    private static let closeBracket = UInt16(UInt8(ascii: "]"))
+    private static let escapable = [star, tilde, backtick, caret, equals, openBracket, closeBracket]
     private static let space = UInt16(UInt8(ascii: " "))
     private static let backslash = UInt16(UInt8(ascii: "\\"))
 
@@ -117,17 +147,27 @@ public enum InlineMarkdown {
         /// A code span's text, and its opening and closing delimiters
         /// (including any trimmed space).
         case code([UInt16], opening: Range<Int>, closing: Range<Int>)
-        /// A run of `length` asterisks, tildes or carets. Those
-        /// not yet used are
-        /// lo..<hi.
+        /// A link's text, already read, and its destination.
+        case link([InlineSpan], destination: String)
+        /// A run of `length` asterisks, tildes, carets or equals signs. Those
+        /// not yet used
+        /// are lo..<hi.
         case delimiter(character: UInt16, lo: Int, hi: Int, length: Int, canOpen: Bool, canClose: Bool)
     }
 
-    private static func parse(_ text: String) -> (spans: [InlineSpan], emphases: [Emphasis]) {
+    private static func parse(_ text: String, readsLinks: Bool = true)
+        -> (spans: [InlineSpan], emphases: [Emphasis], links: [Link]) {
         let units = Array(text.utf16)
-        let images = MarkdownImage.images(in: text).map(\.range)
+        // Comments come first: an image inside one is part of it.
+        let comments = HTMLComment.ranges(in: text)
+        let images = MarkdownImage.images(in: text).map(\.range).filter { image in
+            !comments.contains { $0.overlaps(image) }
+        }
+        let wholes = (comments + images).sorted { $0.lowerBound < $1.lowerBound }
 
         var tokens: [Token] = []
+        var emphases: [Emphasis] = []
+        var links: [Link] = []
         // Whitespace that is part of the text, not inside code or an image.
         var isTextWhitespace = units.map(isWhitespace)
         func appendText(_ text: some Collection<UInt16>) {
@@ -162,16 +202,35 @@ public enum InlineMarkdown {
                 isTextWhitespace.replaceSubrange(index..<closing.upperBound,
                                                  with: repeatElement(false, count: closing.upperBound - index))
                 index = closing.upperBound
-            } else if let image = images.first(where: { $0.lowerBound == index }) {
-                appendText(units[image])
-                isTextWhitespace.replaceSubrange(image, with: repeatElement(false, count: image.count))
-                index = image.upperBound
-            } else if [star, tilde, caret].contains(unit) {
+            } else if let whole = wholes.first(where: { $0.lowerBound == index }) {
+                appendText(units[whole])
+                isTextWhitespace.replaceSubrange(whole, with: repeatElement(false, count: whole.count))
+                index = whole.upperBound
+            } else if unit == openBracket, readsLinks, let (textRange, destination, end) = link(in: units, at: index) {
+                let inner = parse(String(decoding: units[textRange], as: UTF16.self), readsLinks: false)
+                tokens.append(.link(inner.spans, destination: destination))
+                let offset = textRange.lowerBound
+                emphases += inner.emphases.map { emphasis in
+                    Emphasis(opening: emphasis.opening.lowerBound + offset..<emphasis.opening.upperBound + offset,
+                             closing: emphasis.closing.lowerBound + offset..<emphasis.closing.upperBound + offset,
+                             style: emphasis.style)
+                }
+                links.append(Link(range: index..<end, text: textRange, destination: destination))
+                isTextWhitespace.replaceSubrange(index..<end, with: repeatElement(false, count: end - index))
+                index = end
+            } else if [star, tilde, caret, equals].contains(unit) {
                 var end = index
                 while end < units.count, units[end] == unit { end += 1 }
-                // Up to three tildes mark strikethrough and subscript, and
-                // only a single caret superscript.
-                guard unit == star || end - index <= (unit == tilde ? 3 : 1) else {
+                // Up to three tildes mark strikethrough and subscript, only
+                // a single caret superscript, and only two equals signs
+                // highlight.
+                let isDelimiter = switch unit {
+                case star: true
+                case tilde: end - index <= 3
+                case caret: end - index == 1
+                default: end - index == 2
+                }
+                guard isDelimiter else {
                     appendText(units[index..<end])
                     index = end
                     continue
@@ -193,7 +252,6 @@ public enum InlineMarkdown {
         // (bold, strikethrough) where both runs have two, else one (italic,
         // subscript). Openers between the two can no longer be closed.
         // Subscript and superscript can't span whitespace.
-        var emphases: [Emphasis] = []
         var regions: [(opener: Int, closer: Int, style: InlineStyle)] = []
         var openers: [Int] = []
         for closer in tokens.indices {
@@ -224,6 +282,7 @@ public enum InlineMarkdown {
                 let style: InlineStyle = switch character {
                 case tilde: used == 2 ? .strikethrough : .subscript
                 case caret: .superscript
+                case equals: .highlight
                 default: used == 2 ? .bold : .italic
                 }
                 emphases.append(Emphasis(opening: openerHi - used..<openerHi, closing: lo..<lo + used, style: style))
@@ -240,27 +299,65 @@ public enum InlineMarkdown {
         }
 
         var spans: [InlineSpan] = []
-        for (index, token) in tokens.enumerated() {
-            let text: [UInt16]
-            var styles = Set(regions.filter { $0.opener < index && index < $0.closer }.map(\.style))
-            switch token {
-            case .text(let units): text = units
-            case .code(let units, _, _):
-                text = units
-                styles.insert(.code)
-            case .delimiter(let character, let lo, let hi, _, _, _): text = Array(repeating: character, count: hi - lo)
-            }
-            guard !text.isEmpty else { continue }
-            if let last = spans.last, last.styles == styles {
-                spans[spans.count - 1].text += String(decoding: text, as: UTF16.self)
+        func append(_ span: InlineSpan) {
+            guard !span.text.isEmpty else { return }
+            if let last = spans.last, last.styles == span.styles, last.link == span.link {
+                spans[spans.count - 1].text += span.text
             } else {
-                spans.append(InlineSpan(String(decoding: text, as: UTF16.self), styles: styles))
+                spans.append(span)
+            }
+        }
+        for (index, token) in tokens.enumerated() {
+            let styles = Set(regions.filter { $0.opener < index && index < $0.closer }.map(\.style))
+            switch token {
+            case .text(let units):
+                append(InlineSpan(String(decoding: units, as: UTF16.self), styles: styles))
+            case .code(let units, _, _):
+                append(InlineSpan(String(decoding: units, as: UTF16.self), styles: styles.union([.code])))
+            case .link(let inner, let destination):
+                for span in inner {
+                    append(InlineSpan(span.text, styles: styles.union(span.styles), link: destination))
+                }
+            case .delimiter(let character, let lo, let hi, _, _, _):
+                append(InlineSpan(String(decoding: Array(repeating: character, count: hi - lo), as: UTF16.self),
+                                  styles: styles))
             }
         }
         for case .code(_, let opening, let closing) in tokens {
             emphases.append(Emphasis(opening: opening, closing: closing, style: .code))
         }
-        return (spans, emphases.sorted { $0.opening.lowerBound < $1.opening.lowerBound })
+        return (spans, emphases.sorted { $0.opening.lowerBound < $1.opening.lowerBound }, links)
+    }
+
+    /// The link whose `[` is at `start`: the range of its text, its
+    /// destination, and the offset just past it. Brackets in the text must
+    /// pair up, unless escaped or in code.
+    private static func link(in units: [UInt16], at start: Int) -> (Range<Int>, String, Int)? {
+        var index = start + 1
+        var depth = 0
+        while index < units.count {
+            let unit = units[index]
+            if unit == backslash {
+                index += 2
+                continue
+            }
+            if unit == backtick {
+                var end = index
+                while end < units.count, units[end] == backtick { end += 1 }
+                index = closingRun(of: end - index, in: units, from: end)?.upperBound ?? end
+                continue
+            }
+            if unit == openBracket {
+                depth += 1
+            } else if unit == closeBracket {
+                if depth == 0 { break }
+                depth -= 1
+            }
+            index += 1
+        }
+        guard index < units.count, index > start + 1,
+              let (destination, end) = LinkDestination.parse(units, at: index + 1) else { return nil }
+        return (start + 1..<index, destination, end)
     }
 
     /// The next run of exactly `length` backticks from `start`.
@@ -278,33 +375,41 @@ public enum InlineMarkdown {
 
     // MARK: - Writing
 
-    /// A character, a whole image or a whole code span, with its styles.
+    /// A character, a whole image, comment or code span, with its styles and
+    /// link. Writing turns each link into one verbatim unit.
     private struct Unit {
         var text: String
-        var isImage: Bool
+        /// Written as it is: an image, a comment, or a link already written.
+        var isVerbatim: Bool
         var styles: Set<InlineStyle>
+        var link: String?
         var isCode: Bool { styles.contains(.code) }
-        var isSpace: Bool { !isImage && !isCode && text.allSatisfy(\.isWhitespace) }
+        var isSpace: Bool { !isVerbatim && !isCode && text.allSatisfy(\.isWhitespace) }
     }
 
     private static func units(of spans: [InlineSpan]) -> [Unit] {
         var units: [Unit] = []
         for span in spans {
             guard !span.code else {
-                units.append(Unit(text: span.text, isImage: false, styles: span.styles))
+                units.append(Unit(text: span.text, isVerbatim: false, styles: span.styles, link: span.link))
                 continue
             }
             let utf16 = Array(span.text.utf16)
             var index = 0
-            for image in MarkdownImage.images(in: span.text).map(\.range) + [utf16.count..<utf16.count] {
-                for character in String(decoding: utf16[index..<image.lowerBound], as: UTF16.self) {
-                    units.append(Unit(text: String(character), isImage: false, styles: span.styles))
+            let comments = HTMLComment.ranges(in: span.text)
+            let images = MarkdownImage.images(in: span.text).map(\.range).filter { image in
+                !comments.contains { $0.overlaps(image) }
+            }
+            let wholes = (comments + images).sorted { $0.lowerBound < $1.lowerBound }
+            for whole in wholes + [utf16.count..<utf16.count] {
+                for character in String(decoding: utf16[index..<whole.lowerBound], as: UTF16.self) {
+                    units.append(Unit(text: String(character), isVerbatim: false, styles: span.styles, link: span.link))
                 }
-                if !image.isEmpty {
-                    units.append(Unit(text: String(decoding: utf16[image], as: UTF16.self), isImage: true,
-                                      styles: span.styles))
+                if !whole.isEmpty {
+                    units.append(Unit(text: String(decoding: utf16[whole], as: UTF16.self), isVerbatim: true,
+                                      styles: span.styles, link: span.link))
                 }
-                index = image.upperBound
+                index = whole.upperBound
             }
         }
         // A style can't start or end with a space, so leave those out.
@@ -330,16 +435,17 @@ public enum InlineMarkdown {
     private static func merged(_ units: [Unit]) -> [InlineSpan] {
         var spans: [InlineSpan] = []
         for unit in units {
-            if let last = spans.last, last.styles == unit.styles {
+            if let last = spans.last, last.styles == unit.styles, last.link == unit.link {
                 spans[spans.count - 1].text += unit.text
             } else {
-                spans.append(InlineSpan(unit.text, styles: unit.styles))
+                spans.append(InlineSpan(unit.text, styles: unit.styles, link: unit.link))
             }
         }
         return spans
     }
 
     private static func write(_ units: [Unit], escaping: Bool) -> String {
+        let units = linksWritten(units, escaping: escaping)
         var markdown = ""
         var open: [InlineStyle] = []   // outermost first
         func isWanted(_ style: InlineStyle, at index: Int) -> Bool {
@@ -356,11 +462,12 @@ public enum InlineMarkdown {
             // longest outermost, so it can stay open while the others close.
             // Where two overlap without one containing the other, the one
             // ending first is closed and reopened inside.
-            // Strikethrough goes outside bold and italic where they start and
-            // end together, as in ~~**this**~~.
+            // Highlight goes outside strikethrough, and strikethrough outside
+            // bold and italic, where they start and end together, as in
+            // ==~~**this**~~==.
             // Code is written as a whole span, inside the others.
             let wanted = open.filter { isWanted($0, at: index) }
-                + [InlineStyle.strikethrough, .bold, .italic, .superscript, .subscript].filter { isWanted($0, at: index) && !open.contains($0) }
+                + [InlineStyle.highlight, .strikethrough, .bold, .italic, .superscript, .subscript].filter { isWanted($0, at: index) && !open.contains($0) }
             let desired = wanted.enumerated().sorted { a, b in
                 let (endA, endB) = (end(of: a.element, from: index), end(of: b.element, from: index))
                 return endA != endB ? endA > endB : a.offset < b.offset
@@ -377,13 +484,41 @@ public enum InlineMarkdown {
             let unit = units[index]
             if unit.isCode {
                 markdown += codeSpan(unit.text)
-            } else if escaping, !unit.isImage, ["*", "~", "`", "^"].contains(unit.text) {
+            } else if escaping, !unit.isVerbatim, ["*", "~", "`", "^", "=", "[", "]"].contains(unit.text) {
                 markdown += "\\" + unit.text
             } else {
                 markdown += unit.text
             }
         }
         return markdown
+    }
+
+    /// `units` with each run linking to the same place written as one
+    /// verbatim unit, `[text](destination)`, which has the styles all of its
+    /// text has. The text is written inside the brackets with its other
+    /// styles.
+    private static func linksWritten(_ units: [Unit], escaping: Bool) -> [Unit] {
+        var result: [Unit] = []
+        var index = 0
+        while index < units.count {
+            guard let link = units[index].link else {
+                result.append(units[index])
+                index += 1
+                continue
+            }
+            var end = index
+            while end < units.count, units[end].link == link { end += 1 }
+            var inner = Array(units[index..<end])
+            let common = inner.dropFirst().reduce(inner[0].styles) { $0.intersection($1.styles) }.subtracting([.code])
+            for position in inner.indices {
+                inner[position].styles.subtract(common)
+                inner[position].link = nil
+            }
+            result.append(Unit(text: "[" + write(inner, escaping: escaping) + "]" + LinkDestination.markdown(link),
+                               isVerbatim: true, styles: common))
+            index = end
+        }
+        return result
     }
 
     /// `text` as a code span: in a run of backticks that doesn't appear in

@@ -33,26 +33,37 @@ extension EditorViewController {
                 attributes[.codeFence] = blockFence
                 text.append(NSAttributedString(string: line.text + terminator, attributes: attributes))
             } else {
-                text.append(inlineText(line.text + terminator, attributes: line.style.attributes, imageFolders: imageFolders))
+                var attributes = line.style.attributes
+                // A line of only comments is hidden altogether.
+                let comments = HTMLComment.ranges(in: line.text)
+                if !comments.isEmpty, comments.reduce(0, { $0 + $1.count }) == line.text.utf16.count {
+                    attributes[.paragraphStyle] = HTMLComment.hiddenLineStyle
+                }
+                text.append(inlineText(line.text + terminator, attributes: attributes, imageFolders: imageFolders))
             }
         }
         return text
     }
 
     /// One line's text (and newline, if any), with its emphasis and images
-    /// shown.
+    /// shown, and comments hidden.
     private static func inlineText(_ text: String, attributes: [NSAttributedString.Key: Any],
                                    imageFolders: [URL]) -> NSAttributedString {
         let hasNewline = text.hasSuffix("\n")
         let result = NSMutableAttributedString()
         for span in InlineMarkdown.spans(in: hasNewline ? String(text.dropLast()) : text) {
             let spanText = NSMutableAttributedString(
-                string: span.text, attributes: attributes.withInlineStyles(span.styles))
-            for match in MarkdownImage.images(in: span.text).reversed() {
-                let range = NSRange(location: match.range.lowerBound, length: match.range.count)
-                spanText.replaceCharacters(in: range, with: match.image.attachmentString(
-                    markdown: (span.text as NSString).substring(with: range),
-                    attributes: spanText.attributes(at: range.location, effectiveRange: nil), folders: imageFolders))
+                string: span.text, attributes: attributes.withInlineStyles(span.styles, link: span.link))
+            let comments = HTMLComment.ranges(in: span.text)
+            let images = MarkdownImage.images(in: span.text).filter { image in !comments.contains { $0.overlaps(image.range) } }
+            let wholes = comments.map { ($0, nil as MarkdownImage?) } + images.map { ($0.range, $0.image) }
+            for (whole, image) in wholes.sorted(by: { $0.0.lowerBound > $1.0.lowerBound }) {
+                let range = NSRange(location: whole.lowerBound, length: whole.count)
+                let markdown = (span.text as NSString).substring(with: range)
+                let attributes = spanText.attributes(at: range.location, effectiveRange: nil)
+                spanText.replaceCharacters(in: range, with: image.map {
+                    $0.attachmentString(markdown: markdown, attributes: attributes, folders: imageFolders)
+                } ?? HTMLComment.attachmentString(markdown: markdown, attributes: attributes))
             }
             result.append(spanText)
         }
@@ -94,13 +105,15 @@ extension EditorViewController {
         return MarkdownCodec.markdown(from: lines)
     }
 
-    /// The text of `range` with each image written as its Markdown.
+    /// The text of `range` with each image and comment written as its
+    /// Markdown.
     private func markdownText(in range: NSRange) -> String {
         let string = storage.string as NSString
         var text = ""
-        storage.enumerateAttribute(.markdownImage, in: range) { value, run, _ in
-            // Adjacent copies of the same image form one run.
-            text += (value as? String).map { String(repeating: $0, count: run.length) } ?? string.substring(with: run)
+        storage.enumerateAttributes(in: range) { attributes, run, _ in
+            // Adjacent copies of the same image or comment form one run.
+            let markdown = (attributes[.markdownImage] ?? attributes[.markdownComment]) as? String
+            text += markdown.map { String(repeating: $0, count: run.length) } ?? string.substring(with: run)
         }
         return text
     }
@@ -111,11 +124,12 @@ extension EditorViewController {
         var spans: [InlineSpan] = []
         storage.enumerateAttributes(in: range) { attributes, run, _ in
             let styles = Set(InlineStyle.allCases.filter { attributes[$0.key] != nil })
+            let link = attributes[.markdownLink] as? String
             let text = markdownText(in: run)
-            if let last = spans.last, last.styles == styles {
+            if let last = spans.last, last.styles == styles, last.link == link {
                 spans[spans.count - 1].text += text
             } else {
-                spans.append(InlineSpan(text, styles: styles))
+                spans.append(InlineSpan(text, styles: styles, link: link))
             }
         }
         return InlineMarkdown.markdown(for: spans)

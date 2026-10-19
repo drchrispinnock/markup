@@ -141,6 +141,15 @@ import Testing
         #expect(MarkdownCodec.markdown(from: MarkdownCodec.lines(fromMarkdown: markdown)) == markdown)
     }
 
+    @Test func keepsAMultiLineCommentWithItsFirstLine() {
+        let markdown = "# Title\n<!-- note\n# not a heading\n- not a list\n-->\ntext\n<!-- never closed\n- item"
+        let lines = MarkdownCodec.lines(fromMarkdown: markdown)
+        #expect(lines.map(\.text) == ["Title", "<!-- note\n# not a heading\n- not a list\n-->", "text",
+                                      "<!-- never closed", "item"])
+        #expect(lines[1].style == .paragraph && lines[1].list == nil)
+        #expect(MarkdownCodec.markdown(from: lines) == markdown)
+    }
+
     @Test func escapesParagraphsThatWouldOpenACodeBlock() {
         let lines = [Line(style: .paragraph, text: "```"), Line(style: .paragraph, text: "x"),
                      Line(style: .paragraph, text: "```")]

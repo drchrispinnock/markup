@@ -17,8 +17,7 @@ public struct MarkdownImage: Equatable, Sendable {
             if "\\[]".contains(character) { escapedAlt.append("\\") }
             escapedAlt.append(character)
         }
-        let destination = path.contains(where: { " ()<>".contains($0) }) ? "<\(path)>" : path
-        return "![\(escapedAlt)](\(destination))"
+        return "![\(escapedAlt)]" + LinkDestination.markdown(path)
     }
 
     /// The images in `text`, in order, with their ranges as UTF-16 offsets.
@@ -46,12 +45,6 @@ public struct MarkdownImage: Equatable, Sendable {
     private static let bang = UInt16(UInt8(ascii: "!"))
     private static let openBracket = UInt16(UInt8(ascii: "["))
     private static let closeBracket = UInt16(UInt8(ascii: "]"))
-    private static let openParen = UInt16(UInt8(ascii: "("))
-    private static let closeParen = UInt16(UInt8(ascii: ")"))
-    private static let lessThan = UInt16(UInt8(ascii: "<"))
-    private static let greaterThan = UInt16(UInt8(ascii: ">"))
-    private static let quote = UInt16(UInt8(ascii: "\""))
-    private static let space = UInt16(UInt8(ascii: " "))
     private static let newline = UInt16(UInt8(ascii: "\n"))
 
     /// The image whose `![` is at `start`, and the offset just past it.
@@ -70,40 +63,7 @@ public struct MarkdownImage: Equatable, Sendable {
         }
         guard peek() == closeBracket else { return nil }
         index += 1
-        guard peek() == openParen else { return nil }
-        index += 1
-
-        var path: [UInt16] = []
-        if peek() == lessThan {
-            index += 1
-            while let unit = peek(), unit != greaterThan {
-                guard unit != newline, unit != lessThan else { return nil }
-                path.append(unit)
-                index += 1
-            }
-            guard peek() == greaterThan else { return nil }
-            index += 1
-        } else {
-            while let unit = peek(), unit != space, unit != newline, unit != openParen, unit != closeParen {
-                path.append(unit)
-                index += 1
-            }
-        }
-
-        while peek() == space { index += 1 }
-        if peek() == quote {
-            index += 1
-            while let unit = peek(), unit != quote {
-                guard unit != newline else { return nil }
-                index += 1
-            }
-            guard peek() == quote else { return nil }
-            index += 1
-            while peek() == space { index += 1 }
-        }
-        guard peek() == closeParen else { return nil }
-
-        let image = MarkdownImage(alt: String(decoding: alt, as: UTF16.self), path: String(decoding: path, as: UTF16.self))
-        return (image, index + 1)
+        guard let (path, end) = LinkDestination.parse(units, at: index) else { return nil }
+        return (MarkdownImage(alt: String(decoding: alt, as: UTF16.self), path: path), end)
     }
 }
