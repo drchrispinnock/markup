@@ -28,6 +28,7 @@ extension MarkdownDocument {
     /// It has no window, no spelling underlines and no caret.
     static func printView(for markdown: String, imageFolders: [URL], width: CGFloat) -> NSTextView {
         let textView = NSTextView(usingTextLayoutManager: false)
+        textView.textContainer?.replaceLayoutManager(EditorLayoutManager())
         textView.frame = NSRect(x: 0, y: 0, width: width, height: 0)
         textView.isEditable = false
         textView.isVerticallyResizable = true

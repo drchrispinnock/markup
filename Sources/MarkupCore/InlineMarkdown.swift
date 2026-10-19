@@ -3,14 +3,19 @@ public enum InlineStyle: CaseIterable, Sendable {
     case bold
     case italic
     case strikethrough
+    /// Inline code. Its text is literal: nothing inside it is read as
+    /// Markdown.
+    case code
 
     /// The delimiter written on each side: `**bold**`, `*italic*`,
-    /// `~~strikethrough~~`.
+    /// `~~strikethrough~~`, `` `code` ``. Code needs more backticks if its
+    /// text has some.
     public var delimiter: String {
         switch self {
         case .bold: "**"
         case .italic: "*"
         case .strikethrough: "~~"
+        case .code: "`"
         }
     }
 }
@@ -25,20 +30,26 @@ public struct InlineSpan: Equatable, Sendable {
         self.styles = styles
     }
 
-    public init(_ text: String, bold: Bool = false, italic: Bool = false, strikethrough: Bool = false) {
-        self.init(text, styles: Set([bold ? .bold : nil, italic ? .italic : nil, strikethrough ? .strikethrough : nil]
-            .compactMap { $0 }))
+    public init(_ text: String, bold: Bool = false, italic: Bool = false, strikethrough: Bool = false,
+                code: Bool = false) {
+        self.init(text, styles: Set([bold ? .bold : nil, italic ? .italic : nil, strikethrough ? .strikethrough : nil,
+                                     code ? .code : nil].compactMap { $0 }))
     }
 
     public var bold: Bool { styles.contains(.bold) }
     public var italic: Bool { styles.contains(.italic) }
     public var strikethrough: Bool { styles.contains(.strikethrough) }
+    public var code: Bool { styles.contains(.code) }
 }
 
-/// Bold, italic and strikethrough text within a line: `**bold**`,
-/// `*italic*`, `***both***` and `~~strikethrough~~`. Images are kept whole,
-/// as their Markdown. A backslash makes an asterisk or tilde literal (`\*`,
-/// `\~`).
+/// Bold, italic, strikethrough and code within a line: `**bold**`,
+/// `*italic*`, `***both***`, `~~strikethrough~~` and `` `code` ``. Images are
+/// kept whole, as their Markdown. A backslash makes an asterisk, tilde or
+/// backtick literal (`\*`, `\~`, `` \` ``).
+///
+/// Code spans are read first, as in CommonMark: a run of backticks up to the
+/// next run of the same length, with the text between taken literally (and
+/// one space trimmed from each end if both have one).
 ///
 /// Delimiters are matched much as CommonMark (and GitHub, for
 /// strikethrough) match them: a run of asterisks, or two tildes, can open if
@@ -76,6 +87,8 @@ public enum InlineMarkdown {
 
     private static let star = UInt16(UInt8(ascii: "*"))
     private static let tilde = UInt16(UInt8(ascii: "~"))
+    private static let backtick = UInt16(UInt8(ascii: "`"))
+    private static let space = UInt16(UInt8(ascii: " "))
     private static let backslash = UInt16(UInt8(ascii: "\\"))
 
     private static func isWhitespace(_ unit: UInt16) -> Bool {
@@ -84,6 +97,9 @@ public enum InlineMarkdown {
 
     private enum Token {
         case text([UInt16])
+        /// A code span's text, and its opening and closing delimiters
+        /// (including any trimmed space).
+        case code([UInt16], opening: Range<Int>, closing: Range<Int>)
         /// A run of `length` asterisks or tildes. Those not yet used are
         /// lo..<hi.
         case delimiter(character: UInt16, lo: Int, hi: Int, length: Int, canOpen: Bool, canClose: Bool)
@@ -104,12 +120,29 @@ public enum InlineMarkdown {
         var index = 0
         while index < units.count {
             let unit = units[index]
-            if let image = images.first(where: { $0.lowerBound == index }) {
-                appendText(units[image])
-                index = image.upperBound
-            } else if unit == backslash, index + 1 < units.count, units[index + 1] == star || units[index + 1] == tilde {
+            if unit == backslash, index + 1 < units.count, [star, tilde, backtick].contains(units[index + 1]) {
                 appendText([units[index + 1]])
                 index += 2
+            } else if unit == backtick {
+                var end = index
+                while end < units.count, units[end] == backtick { end += 1 }
+                guard let closing = closingRun(of: end - index, in: units, from: end) else {
+                    appendText(units[index..<end])
+                    index = end
+                    continue
+                }
+                var content = Array(units[end..<closing.lowerBound])
+                var opening = index..<end, closingRange = closing
+                if content.count >= 2, content.first == space, content.last == space, content.contains(where: { $0 != space }) {
+                    content = Array(content.dropFirst().dropLast())
+                    opening = opening.lowerBound..<opening.upperBound + 1
+                    closingRange = closingRange.lowerBound - 1..<closingRange.upperBound
+                }
+                tokens.append(.code(content, opening: opening, closing: closingRange))
+                index = closing.upperBound
+            } else if let image = images.first(where: { $0.lowerBound == index }) {
+                appendText(units[image])
+                index = image.upperBound
             } else if unit == star || unit == tilde {
                 var end = index
                 while end < units.count, units[end] == unit { end += 1 }
@@ -171,34 +204,58 @@ public enum InlineMarkdown {
         var spans: [InlineSpan] = []
         for (index, token) in tokens.enumerated() {
             let text: [UInt16]
+            var styles = Set(regions.filter { $0.opener < index && index < $0.closer }.map(\.style))
             switch token {
             case .text(let units): text = units
+            case .code(let units, _, _):
+                text = units
+                styles.insert(.code)
             case .delimiter(let character, let lo, let hi, _, _, _): text = Array(repeating: character, count: hi - lo)
             }
             guard !text.isEmpty else { continue }
-            let styles = Set(regions.filter { $0.opener < index && index < $0.closer }.map(\.style))
             if let last = spans.last, last.styles == styles {
                 spans[spans.count - 1].text += String(decoding: text, as: UTF16.self)
             } else {
                 spans.append(InlineSpan(String(decoding: text, as: UTF16.self), styles: styles))
             }
         }
+        for case .code(_, let opening, let closing) in tokens {
+            emphases.append(Emphasis(opening: opening, closing: closing, style: .code))
+        }
         return (spans, emphases.sorted { $0.opening.lowerBound < $1.opening.lowerBound })
+    }
+
+    /// The next run of exactly `length` backticks from `start`.
+    private static func closingRun(of length: Int, in units: [UInt16], from start: Int) -> Range<Int>? {
+        var index = start
+        while index < units.count {
+            guard units[index] == backtick else { index += 1; continue }
+            var end = index
+            while end < units.count, units[end] == backtick { end += 1 }
+            if end - index == length { return index..<end }
+            index = end
+        }
+        return nil
     }
 
     // MARK: - Writing
 
-    /// A character, or a whole image, with its styles.
+    /// A character, a whole image or a whole code span, with its styles.
     private struct Unit {
         var text: String
         var isImage: Bool
         var styles: Set<InlineStyle>
-        var isSpace: Bool { !isImage && text.allSatisfy(\.isWhitespace) }
+        var isCode: Bool { styles.contains(.code) }
+        var isSpace: Bool { !isImage && !isCode && text.allSatisfy(\.isWhitespace) }
     }
 
     private static func units(of spans: [InlineSpan]) -> [Unit] {
         var units: [Unit] = []
         for span in spans {
+            guard !span.code else {
+                units.append(Unit(text: span.text, isImage: false, styles: span.styles))
+                continue
+            }
             let utf16 = Array(span.text.utf16)
             var index = 0
             for image in MarkdownImage.images(in: span.text).map(\.range) + [utf16.count..<utf16.count] {
@@ -213,7 +270,7 @@ public enum InlineMarkdown {
             }
         }
         // A style can't start or end with a space, so leave those out.
-        for style in InlineStyle.allCases {
+        for style in InlineStyle.allCases where style != .code {
             var start = 0
             while start < units.count {
                 guard units[start].styles.contains(style) else { start += 1; continue }
@@ -259,6 +316,7 @@ public enum InlineMarkdown {
             // ending first is closed and reopened inside.
             // Strikethrough goes outside bold and italic where they start and
             // end together, as in ~~**this**~~.
+            // Code is written as a whole span, inside the others.
             let wanted = open.filter { isWanted($0, at: index) }
                 + [InlineStyle.strikethrough, .bold, .italic].filter { isWanted($0, at: index) && !open.contains($0) }
             let desired = wanted.enumerated().sorted { a, b in
@@ -275,8 +333,31 @@ public enum InlineMarkdown {
                 open.append(style)
             }
             let unit = units[index]
-            markdown += escaping && !unit.isImage && (unit.text == "*" || unit.text == "~") ? "\\" + unit.text : unit.text
+            if unit.isCode {
+                markdown += codeSpan(unit.text)
+            } else if escaping, !unit.isImage, ["*", "~", "`"].contains(unit.text) {
+                markdown += "\\" + unit.text
+            } else {
+                markdown += unit.text
+            }
         }
         return markdown
+    }
+
+    /// `text` as a code span: in a run of backticks that doesn't appear in
+    /// it, with spaces added inside if it starts or ends with a backtick, or
+    /// with a space at both ends.
+    private static func codeSpan(_ text: String) -> String {
+        var runs: Set<Int> = []
+        var run = 0
+        for character in text + " " {
+            if character == "`" { run += 1 } else if run > 0 { runs.insert(run); run = 0 }
+        }
+        var length = 1
+        while runs.contains(length) { length += 1 }
+        let delimiter = String(repeating: "`", count: length)
+        let needsSpaces = text.first == "`" || text.last == "`"
+            || (text.count >= 2 && text.first == " " && text.last == " " && text.contains { $0 != " " })
+        return needsSpaces ? delimiter + " " + text + " " + delimiter : delimiter + text + delimiter
     }
 }

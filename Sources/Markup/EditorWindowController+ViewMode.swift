@@ -94,6 +94,9 @@ extension EditorWindowController: NSMenuItemValidation {
         case #selector(toggleStrikethrough(_:)):
             menuItem.state = strikethroughButton.state
             return !isShowingMarkdown
+        case #selector(toggleCode(_:)):
+            menuItem.state = codeButton.state
+            return !isShowingMarkdown
         default:
             break
         }

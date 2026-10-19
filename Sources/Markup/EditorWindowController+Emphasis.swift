@@ -1,9 +1,11 @@
 import AppKit
 import MarkupCore
 
-/// Bold, italic and strikethrough: the header's buttons and the Format menu.
-/// With text selected they apply the style to it, or take it off if it all
-/// already has it. With no selection they change what is typed next.
+/// Bold, italic, strikethrough and inline code: the header's buttons and the
+/// Format menu. With text selected they apply the style to it, or take it
+/// off if it all already has it. With no selection they change what is
+/// typed next. Code blocks keep their text as typed, so these don't apply in
+/// them.
 extension EditorWindowController {
     @objc func toggleBold(_ sender: Any?) {
         toggle(.bold, actionName: "Bold")
@@ -17,11 +19,16 @@ extension EditorWindowController {
         toggle(.strikethrough, actionName: "Strikethrough")
     }
 
+    @objc func toggleCode(_ sender: Any?) {
+        toggle(.code, actionName: "Code")
+    }
+
     func button(for style: InlineStyle) -> NSButton {
         switch style {
         case .bold: boldButton
         case .italic: italicButton
         case .strikethrough: strikethroughButton
+        case .code: codeButton
         }
     }
 
@@ -37,10 +44,13 @@ extension EditorWindowController {
         }
         let turnOn = !isAll(style, in: selection)
         changeAttributes(in: selection) {
-            if turnOn {
-                storage.addAttribute(style.key, value: true, range: selection)
-            } else {
-                storage.removeAttribute(style.key, range: selection)
+            storage.enumerateAttribute(.blockStyle, in: selection) { value, run, _ in
+                guard value as? Int != BlockStyle.code.rawValue else { return }
+                if turnOn {
+                    storage.addAttribute(style.key, value: true, range: run)
+                } else {
+                    storage.removeAttribute(style.key, range: run)
+                }
             }
             storage.applyInlineStyles(in: selection)
         }
@@ -50,12 +60,13 @@ extension EditorWindowController {
     }
 
     /// Whether every character of `range` that can be styled has `style`.
-    /// Newlines and list markers don't count.
+    /// Newlines, list markers and code blocks don't count.
     func isAll(_ style: InlineStyle, in range: NSRange) -> Bool {
         let string = storage.string as NSString
         var sawText = false
         for index in range.location..<NSMaxRange(range) {
-            guard string.character(at: index) != 0x0A, storage.attribute(.listMarker, at: index, effectiveRange: nil) == nil
+            guard string.character(at: index) != 0x0A, storage.attribute(.listMarker, at: index, effectiveRange: nil) == nil,
+                  storage.blockStyle(at: index) != .code
             else { continue }
             guard storage.attribute(style.key, at: index, effectiveRange: nil) != nil else { return false }
             sawText = true
@@ -76,6 +87,9 @@ extension EditorWindowController {
         }
         typingStyles = nil
         let line = lineRange(at: selection.location)
+        if line.length > 0, storage.blockStyle(at: line.location) == .code {
+            return []
+        }
         let contents = contentsRange(of: line)
         let start = listItem(at: line) != nil ? contents.location + 1 : contents.location
         if selection.location > start {

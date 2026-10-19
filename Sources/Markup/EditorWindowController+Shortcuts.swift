@@ -7,9 +7,11 @@ extension EditorWindowController {
     /// - "# ", "## " and "### " make the line a heading of that level.
     /// - "- " makes a paragraph a bullet, and "[ ] " or "[x] " at the start of
     ///   a bullet makes it a checkbox.
-    /// - "*italic*", "**bold**", "***both***" and "~~strikethrough~~"
-    ///   anywhere in a line become styled text.
+    /// - "*italic*", "**bold**", "***both***", "~~strikethrough~~" and
+    ///   "`code`" anywhere in a line become styled text.
     /// - "![alt](path)" anywhere in a line becomes the image.
+    ///
+    /// Lines of code blocks, and inline code, are left as typed.
     ///
     /// Only edits to the syntax itself trigger this, so an undone conversion
     /// stays undone while the rest of the line is edited.
@@ -27,6 +29,11 @@ extension EditorWindowController {
         while location < storage.length - distanceFromEnd {
             removeMarkers(insideLineAt: lineRange(at: location))
             let line = lineRange(at: location)
+            // Code blocks keep their text as typed.
+            if line.length > 0, listItem(at: line) == nil, storage.blockStyle(at: line.location) == .code {
+                location = NSMaxRange(line)
+                continue
+            }
             if let item = listItem(at: line) {
                 convertTaskPrefix(of: line, item: item, after: edit)
             } else if !convertHeadingPrefix(of: line, after: edit) {
@@ -51,6 +58,7 @@ extension EditorWindowController {
         // If the line is the last and holds only the prefix, it is left with
         // no characters to carry the style, so remember it for that spot.
         emptyLineStyle = (line.location, prefix.style)
+        emptyLineFence = nil
         replaceCharacters(in: NSRange(location: line.location, length: prefix.length), with: NSAttributedString())
 
         let heading = lineRange(at: line.location)
@@ -78,7 +86,8 @@ extension EditorWindowController {
                 : range.location < edit.location && edit.location < NSMaxRange(range)
             // An attachment inside the syntax, such as an image in the alt
             // text, would be lost.
-            guard touched, string.rangeOfCharacter(from: CharacterSet(charactersIn: "\u{FFFC}"), range: range).location == NSNotFound
+            guard touched, string.rangeOfCharacter(from: CharacterSet(charactersIn: "\u{FFFC}"), range: range).location == NSNotFound,
+                  !isInlineCode(range), !followsUnclosedBacktick(range, in: contents)
             else { continue }
 
             let selection = textView.selectedRange()
@@ -93,15 +102,41 @@ extension EditorWindowController {
         }
     }
 
+    /// Whether an odd number of backticks that aren't inline code come
+    /// before `range` on its line, so it may be inside inline code that is
+    /// still being typed.
+    private func followsUnclosedBacktick(_ range: NSRange, in contents: NSRange) -> Bool {
+        let string = storage.string as NSString
+        var count = 0
+        for index in contents.location..<range.location where string.character(at: index) == UInt16(UInt8(ascii: "`")) {
+            if storage.attribute(.inlineCode, at: index, effectiveRange: nil) == nil { count += 1 }
+        }
+        return count % 2 == 1
+    }
+
+    /// Whether any of `range` is already inline code.
+    private func isInlineCode(_ range: NSRange) -> Bool {
+        var found = false
+        storage.enumerateAttribute(.inlineCode, in: range) { value, _, stop in
+            if value != nil {
+                found = true
+                stop.pointee = true
+            }
+        }
+        return found
+    }
+
     /// Replaces typed or pasted inline styles that the edit touched, or that
     /// the edit was typed just after, with styled text. A just-typed closing
-    /// asterisk or tilde waits for the next character: an asterisk may be
-    /// the first of two, and the next character shouldn't take the style.
+    /// asterisk, tilde or backtick waits for the next character: an asterisk
+    /// may be the first of two, and the next character shouldn't take the
+    /// style.
     private func convertEmphasis(in line: NSRange, after edit: NSRange) {
         let contents = contentsRange(of: line)
         let string = storage.string as NSString
         let typedDelimiter = edit.length == 1 && NSMaxRange(edit) <= string.length
-            && [UInt16(UInt8(ascii: "*")), UInt16(UInt8(ascii: "~"))].contains(string.character(at: edit.location))
+            && [UInt16(UInt8(ascii: "*")), UInt16(UInt8(ascii: "~")), UInt16(UInt8(ascii: "`"))]
+                .contains(string.character(at: edit.location))
         let found = InlineMarkdown.emphases(in: string.substring(with: contents)).map { emphasis in
             (opening: NSRange(location: contents.location + emphasis.opening.lowerBound, length: emphasis.opening.count),
              closing: NSRange(location: contents.location + emphasis.closing.lowerBound, length: emphasis.closing.count),
@@ -112,7 +147,11 @@ extension EditorWindowController {
             let touched = edit.length > 0
                 ? NSIntersectionRange(whole, edit).length > 0 || edit.location == NSMaxRange(whole)
                 : whole.location < edit.location && edit.location <= NSMaxRange(whole)
+            // Delimiters inside inline code are code, as are those after an
+            // unclosed backtick, which may be inline code still being typed.
             return touched && !(typedDelimiter && NSMaxRange(edit) == NSMaxRange(emphasis.closing))
+                && !isInlineCode(emphasis.opening) && !isInlineCode(emphasis.closing)
+                && (emphasis.style == .code || !followsUnclosedBacktick(emphasis.opening, in: contents))
         }
         guard !chosen.isEmpty else { return }
 

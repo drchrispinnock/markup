@@ -41,6 +41,39 @@ import Testing
         #expect(InlineMarkdown.markdown(for: [InlineSpan("a ~ b")]) == "a ~ b")
     }
 
+    @Test func readsCodeSpansLiterally() {
+        #expect(InlineMarkdown.spans(in: "run `ls *.md` now") == [
+            InlineSpan("run "), InlineSpan("ls *.md", code: true), InlineSpan(" now"),
+        ])
+        #expect(InlineMarkdown.spans(in: "``a ` b``") == [InlineSpan("a ` b", code: true)])
+        #expect(InlineMarkdown.spans(in: "` `` `") == [InlineSpan("``", code: true)])
+        #expect(InlineMarkdown.spans(in: #"`a\*b`"#) == [InlineSpan(#"a\*b"#, code: true)])
+        #expect(InlineMarkdown.spans(in: "**`x`**") == [InlineSpan("x", bold: true, code: true)])
+        #expect(InlineMarkdown.spans(in: "`![a](b.png)`") == [InlineSpan("![a](b.png)", code: true)])
+    }
+
+    @Test(arguments: ["a ` b", "``x`", #"\`x`"#])
+    func leavesUnmatchedBackticksAsText(text: String) {
+        #expect(InlineMarkdown.spans(in: text).allSatisfy { !$0.code })
+    }
+
+    @Test func reportsWhereCodeDelimitersAre() {
+        #expect(InlineMarkdown.emphases(in: "a `b` ` c `") == [
+            .init(opening: 2..<3, closing: 4..<5, style: .code),
+            .init(opening: 6..<8, closing: 9..<11, style: .code),
+        ])
+    }
+
+    @Test func writesCodeSpans() {
+        #expect(InlineMarkdown.markdown(for: [InlineSpan("run "), InlineSpan("ls *.md", code: true)]) == "run `ls *.md`")
+        #expect(InlineMarkdown.markdown(for: [InlineSpan("a`b", code: true)]) == "``a`b``")
+        #expect(InlineMarkdown.markdown(for: [InlineSpan("`x", code: true)]) == "`` `x ``")
+        #expect(InlineMarkdown.markdown(for: [InlineSpan(" x ", code: true)]) == "`  x  `")
+        #expect(InlineMarkdown.markdown(for: [InlineSpan("x", bold: true, code: true), InlineSpan(" y", bold: true)])
+            == "**`x` y**")
+        #expect(InlineMarkdown.markdown(for: [InlineSpan("`not code`")]) == #"\`not code\`"#)
+    }
+
     @Test func readsEscapedAsterisks() {
         #expect(InlineMarkdown.spans(in: #"\*not italic\*"#) == [InlineSpan("*not italic*")])
     }
@@ -88,7 +121,9 @@ import Testing
     /// Every character's emphasis, as (character, bold, italic).
     private func flags(_ spans: [InlineSpan]) -> [String] {
         spans.flatMap { span in
-            span.text.map { "\($0)\(span.bold ? "B" : "")\(span.italic ? "I" : "")\(span.strikethrough ? "S" : "")" }
+            span.text.map {
+                "\($0)\(span.bold ? "B" : "")\(span.italic ? "I" : "")\(span.strikethrough ? "S" : "")\(span.code ? "C" : "")"
+            }
         }
     }
 
@@ -97,20 +132,20 @@ import Testing
     /// italic "x" straight into bold "a", can't always be written in Markdown:
     /// the closing and opening asterisks run together.)
     @Test func roundTripsAnyMixOfEmphasisBetweenWords() {
-        let words = ["a", "*", "b c", "**", "~", "~~"]
+        let words = ["a", "*", "~~", "`"]
         func styles(_ bits: Int) -> Set<InlineStyle> {
             Set(InlineStyle.allCases.enumerated().filter { bits & (1 << $0.offset) != 0 }.map(\.element))
         }
         for first in words {
             for second in words {
-                for third in ["z", "*", "~~"] {
-                    for flagBits in 0..<512 {
+                for third in ["b c"] {
+                    for flagBits in 0..<4096 {
                         let spans = [
                             InlineSpan(first, styles: styles(flagBits)),
                             InlineSpan(" "),
-                            InlineSpan(second, styles: styles(flagBits >> 3)),
-                            InlineSpan(" ", styles: styles(flagBits >> 3)),
-                            InlineSpan(third, styles: styles(flagBits >> 6)),
+                            InlineSpan(second, styles: styles(flagBits >> 4)),
+                            InlineSpan(" ", styles: styles(flagBits >> 4).subtracting([.code])),
+                            InlineSpan(third, styles: styles(flagBits >> 8)),
                         ]
                         let markdown = InlineMarkdown.markdown(for: spans)
                         let read = InlineMarkdown.spans(in: markdown)

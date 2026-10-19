@@ -20,6 +20,9 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
                                 target: nil, action: nil)
     let strikethroughButton = NSButton(
         image: NSImage(systemSymbolName: "strikethrough", accessibilityDescription: "Strikethrough")!, target: nil, action: nil)
+    let codeButton = NSButton(
+        image: NSImage(systemSymbolName: "chevron.left.forwardslash.chevron.right", accessibilityDescription: "Code")!,
+        target: nil, action: nil)
     let imageButton = NSButton(image: NSImage(systemSymbolName: "photo", accessibilityDescription: "Insert Image")!,
                                target: nil, action: nil)
     let textView = EditorTextView(usingTextLayoutManager: false)
@@ -40,6 +43,9 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
     /// carry it, and the line's location. It applies while the caret stays
     /// there, and is forgotten once the caret is anywhere else.
     var emptyLineStyle: (location: Int, style: BlockStyle)?
+
+    /// The code block fence for `emptyLineStyle`, when that is code.
+    var emptyLineFence: CodeFence?
 
     /// Inline styles chosen with the buttons while nothing is selected, and
     /// the caret location they apply to. Forgotten once the caret moves.
@@ -73,7 +79,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
 
         for (button, action, tip) in [(boldButton, #selector(toggleBold(_:)), "Bold (⌘B)"),
                                       (italicButton, #selector(toggleItalic(_:)), "Italic (⌘I)"),
-                                      (strikethroughButton, #selector(toggleStrikethrough(_:)), "Strikethrough (⇧⌘X)")] {
+                                      (strikethroughButton, #selector(toggleStrikethrough(_:)), "Strikethrough (⇧⌘X)"),
+                                      (codeButton, #selector(toggleCode(_:)), "Code (⌘E)")] {
             button.setButtonType(.pushOnPushOff)
             button.target = self
             button.action = action
@@ -102,7 +109,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
             view.translatesAutoresizingMaskIntoConstraints = false
             contentView.addSubview(view)
         }
-        for control in [stylePopUp, boldButton, italicButton, strikethroughButton, imageButton, viewModeControl] {
+        for control in [stylePopUp, boldButton, italicButton, strikethroughButton, codeButton, imageButton, viewModeControl] {
             control.translatesAutoresizingMaskIntoConstraints = false
             headerView.addSubview(control)
         }
@@ -122,6 +129,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
             italicButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
             strikethroughButton.leadingAnchor.constraint(equalTo: italicButton.trailingAnchor, constant: 4),
             strikethroughButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+            codeButton.leadingAnchor.constraint(equalTo: strikethroughButton.trailingAnchor, constant: 4),
+            codeButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
 
             imageButton.trailingAnchor.constraint(equalTo: viewModeControl.leadingAnchor, constant: -8),
             imageButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
@@ -164,6 +173,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
         // then widens the scroll view to fit the window, and autoresizing
         // widens the text view by the same amount, so the two stay equally
         // wide and lines wrap at the window's edge.
+        // Draws the shading behind code blocks.
+        textView.textContainer?.replaceLayoutManager(EditorLayoutManager())
         textView.frame = .zero
         textView.minSize = .zero
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
@@ -294,7 +305,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
         guard !isShowingMarkdown else { return false }
         return switch commandSelector {
         case #selector(NSResponder.insertNewline(_:)):
-            insertNewlineInList() || insertNewlineAfterHeading()
+            insertNewlineInList() || insertNewlineAfterHeading() || insertNewlineInCode()
         case #selector(NSResponder.insertTab(_:)):
             changeListLevel(by: 1)
         case #selector(NSResponder.insertBacktab(_:)):
@@ -335,18 +346,33 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
                   !undoManager.isUndoing, !undoManager.isRedoing else { return }
             for line in lineRanges(in: editedRange) where line.length > 0 {
                 if let item = listItem(at: line) {
-                    if !hasUniform(.listLevel, item.level, in: line) || !hasUniform(.blockStyle, 0, in: line) {
+                    if !hasUniform(.listLevel, item.level, in: line) || !hasUniform(.blockStyle, 0, in: line)
+                        || contains(.codeFence, in: line) {
                         changeAttributes(in: line) {
                             storage.addAttributes(item.lineAttributes, range: line)
+                            storage.removeAttribute(.codeFence, range: line)
                             storage.applyInlineStyles(in: line)
                         }
                     }
                 } else {
                     let style = storage.blockStyle(at: line.location)
-                    if !hasUniform(.blockStyle, style.rawValue, in: line) || contains(.listLevel, in: line) {
+                    // Code keeps its text as typed, so it has no inline
+                    // styles, and the whole line has its first character's
+                    // fence.
+                    let fence = style == .code ? storage.attribute(.codeFence, at: line.location, effectiveRange: nil) as? CodeFence : nil
+                    let hasInlineStyles = style == .code && InlineStyle.allCases.contains { contains($0.key, in: line) }
+                    if !hasUniform(.blockStyle, style.rawValue, in: line) || contains(.listLevel, in: line)
+                        || !hasUniformFence(fence, in: line) || hasInlineStyles {
                         changeAttributes(in: line) {
                             storage.addAttributes(style.attributes, range: line)
                             storage.removeAttribute(.listLevel, range: line)
+                            storage.removeAttribute(.codeFence, range: line)
+                            if let fence { storage.addAttribute(.codeFence, value: fence, range: line) }
+                            if style == .code {
+                                for inlineStyle in InlineStyle.allCases {
+                                    storage.removeAttribute(inlineStyle.key, range: line)
+                                }
+                            }
                             storage.applyInlineStyles(in: line)
                         }
                     }
@@ -359,6 +385,17 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
         var isUniform = true
         storage.enumerateAttribute(key, in: range) { found, _, stop in
             if (found as? Int) != value {
+                isUniform = false
+                stop.pointee = true
+            }
+        }
+        return isUniform
+    }
+
+    private func hasUniformFence(_ fence: CodeFence?, in range: NSRange) -> Bool {
+        var isUniform = true
+        storage.enumerateAttribute(.codeFence, in: range) { found, _, stop in
+            if found as? CodeFence != fence {
                 isUniform = false
                 stop.pointee = true
             }

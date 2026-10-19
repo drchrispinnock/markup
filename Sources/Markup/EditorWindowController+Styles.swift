@@ -18,6 +18,14 @@ extension EditorWindowController {
         if lines.length > 0 {
             changeAttributes(in: lines) {
                 storage.addAttributes(style.attributes, range: lines)
+                if style == .code {
+                    // Code keeps its text as typed, without inline styles.
+                    for inlineStyle in InlineStyle.allCases {
+                        storage.removeAttribute(inlineStyle.key, range: lines)
+                    }
+                } else {
+                    storage.removeAttribute(.codeFence, range: lines)
+                }
                 storage.applyInlineStyles(in: lines)
             }
             undoManager?.setActionName("Change Style")
@@ -31,6 +39,7 @@ extension EditorWindowController {
         let caret = textView.selectedRange().location
         if lineRange(at: caret).length == 0 {
             emptyLineStyle = (caret, style)
+            emptyLineFence = nil
         }
         updateForSelection()
         window?.makeFirstResponder(textView)
@@ -74,7 +83,13 @@ extension EditorWindowController {
             style = .paragraph
             emptyLineStyle = nil
         }
-        textView.typingAttributes = style.attributes.withInlineStyles(inlineStyles)
+        var attributes = style.attributes.withInlineStyles(inlineStyles)
+        if style == .code {
+            // New code lines belong to the same block.
+            attributes[.codeFence] = line.length > 0
+                ? storage.attribute(.codeFence, at: line.location, effectiveRange: nil) : emptyLineFence
+        }
+        textView.typingAttributes = attributes
         stylePopUp.selectItem(withTag: style.rawValue)
     }
 
@@ -82,7 +97,8 @@ extension EditorWindowController {
     func insertNewlineAfterHeading() -> Bool {
         let selection = textView.selectedRange()
         let contents = contentsRange(of: lineRange(at: selection.location))
-        guard styleAtCaret != .paragraph, selection.length == 0, selection.location == NSMaxRange(contents) else {
+        guard styleAtCaret != .paragraph, styleAtCaret != .code, selection.length == 0,
+              selection.location == NSMaxRange(contents) else {
             return false
         }
 

@@ -1,15 +1,38 @@
 /// One line of a document: its text without any Markdown heading or list
 /// marker, its style, and its list item if it is one. List items are always
-/// paragraph style.
+/// paragraph style. The first line of a code block has the block's fence.
 public struct Line: Equatable, Sendable {
     public var style: BlockStyle
     public var text: String
     public var list: ListItem?
+    public var fence: CodeFence?
 
-    public init(style: BlockStyle, text: String, list: ListItem? = nil) {
+    public init(style: BlockStyle, text: String, list: ListItem? = nil, fence: CodeFence? = nil) {
         self.style = style
         self.text = text
         self.list = list
+        self.fence = fence
+    }
+}
+
+/// The opening fence of a code block: its number of backticks and the info
+/// string after them (usually a language), kept so the block is written back
+/// as it was.
+public struct CodeFence: Hashable, Sendable {
+    public var backticks: Int
+    public var info: String
+
+    public init(backticks: Int = 3, info: String = "") {
+        self.backticks = backticks
+        self.info = info
+    }
+
+    /// The fence as typed on a line of its own, such as "```" or "```swift".
+    public init?(line: some StringProtocol) {
+        let backticks = line.prefix(while: { $0 == "`" }).count
+        let info = line.dropFirst(backticks)
+        guard backticks >= 3, !info.contains("`") else { return nil }
+        self.init(backticks: backticks, info: String(info))
     }
 }
 
@@ -21,17 +44,83 @@ public struct Line: Equatable, Sendable {
 /// - A line starting with an even number of spaces and "- " is a list item,
 ///   nested one level per two spaces. "[ ] " or "[x] " after the dash makes
 ///   it a task.
+/// - Lines between an opening fence (three or more backticks, then perhaps a
+///   language) and the next line of exactly that many backticks are code,
+///   kept exactly as they are. A fence with no lines before its closing
+///   line, or none at all, is text.
 ///
 /// Text that would otherwise read back as one of these is escaped with a
 /// backslash, so it survives a save: a paragraph "# not a heading" is written
 /// as "\# not a heading", and a bullet "[ ] not a task" as "- \[ ] not a task".
+/// A paragraph that would open a code block is escaped the same way.
 public enum MarkdownCodec {
     public static func lines(fromMarkdown markdown: String) -> [Line] {
-        markdown.split(separator: "\n", omittingEmptySubsequences: false).map(line)
+        let raw = markdown.split(separator: "\n", omittingEmptySubsequences: false)
+        var lines: [Line] = []
+        var index = 0
+        while index < raw.count {
+            if let fence = CodeFence(line: raw[index]), let end = closingFence(of: fence, in: raw, after: index) {
+                for (offset, text) in raw[index + 1..<end].enumerated() {
+                    lines.append(Line(style: .code, text: String(text), fence: offset == 0 ? fence : nil))
+                }
+                index = end + 1
+                continue
+            }
+            let text = raw[index]
+            if text.first == "\\", let fence = CodeFence(line: text.drop(while: { $0 == "\\" })),
+               closingFence(of: fence, in: raw, after: index) != nil {
+                lines.append(Line(style: .paragraph, text: String(text.dropFirst())))
+            } else {
+                lines.append(line(fromMarkdown: text))
+            }
+            index += 1
+        }
+        return lines
     }
 
     public static func markdown(from lines: [Line]) -> String {
-        lines.map(markdown).joined(separator: "\n")
+        // Code blocks become their lines between fences. A block starts at a
+        // line with a fence or after a line that isn't code.
+        var written: [(text: String, isParagraph: Bool)] = []
+        var index = 0
+        while index < lines.count {
+            guard lines[index].style == .code else {
+                written.append((markdown(from: lines[index]), lines[index].style == .paragraph && lines[index].list == nil))
+                index += 1
+                continue
+            }
+            var end = index + 1
+            while end < lines.count, lines[end].style == .code, lines[end].fence == nil { end += 1 }
+            var fence = lines[index].fence ?? CodeFence()
+            // A line of exactly the fence's backticks would end the block.
+            while lines[index..<end].contains(where: { $0.text == String(repeating: "`", count: fence.backticks) }) {
+                fence.backticks += 1
+            }
+            let marker = String(repeating: "`", count: fence.backticks)
+            written.append((marker + fence.info, false))
+            written += lines[index..<end].map { ($0.text, false) }
+            written.append((marker, false))
+            index = end
+        }
+        // Escape paragraphs that would read back as opening a code block,
+        // working up so each sees the lines below as they will be written.
+        var texts = written.map(\.text)
+        for index in written.indices.reversed() where written[index].isParagraph {
+            if let fence = CodeFence(line: texts[index].drop(while: { $0 == "\\" })),
+               closingFence(of: fence, in: texts.map { Substring($0) }, after: index) != nil {
+                texts[index] = "\\" + texts[index]
+            }
+        }
+        return texts.joined(separator: "\n")
+    }
+
+    /// The index of the line that closes a code block opened by `fence` on
+    /// line `opening`: the next line of exactly the fence's backticks, if
+    /// there is one and the block has at least one line.
+    private static func closingFence(of fence: CodeFence, in lines: [Substring], after opening: Int) -> Int? {
+        let marker = String(repeating: "`", count: fence.backticks)
+        guard let end = lines[(opening + 1)...].firstIndex(where: { $0 == marker }), end > opening + 1 else { return nil }
+        return end
     }
 
     /// The list item that `text` starts with, and the length of its Markdown
@@ -90,6 +179,7 @@ public enum MarkdownCodec {
         return nil
     }
 
+    /// A line that isn't code.
     private static func markdown(from line: Line) -> String {
         if let item = line.list {
             let needsEscape = item.marker == .bullet && taskMarker(of: line.text.drop(while: { $0 == "\\" })) != nil

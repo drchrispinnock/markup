@@ -106,4 +106,46 @@ import Testing
     func roundTrips(markdown: String) {
         #expect(MarkdownCodec.markdown(from: MarkdownCodec.lines(fromMarkdown: markdown)) == markdown)
     }
+
+    @Test func readsCodeBlocks() {
+        let lines = MarkdownCodec.lines(fromMarkdown: "Before\n```swift\nlet x = 1\n# not a heading\n```\nAfter")
+        #expect(lines == [
+            Line(style: .paragraph, text: "Before"),
+            Line(style: .code, text: "let x = 1", fence: CodeFence(backticks: 3, info: "swift")),
+            Line(style: .code, text: "# not a heading"),
+            Line(style: .paragraph, text: "After"),
+        ])
+    }
+
+    @Test func writesCodeBlocksBetweenFences() {
+        #expect(MarkdownCodec.markdown(from: [
+            Line(style: .code, text: "a"), Line(style: .code, text: "- b"), Line(style: .paragraph, text: "c"),
+        ]) == "```\na\n- b\n```\nc")
+        // A fence starts a new block, even straight after another.
+        #expect(MarkdownCodec.markdown(from: [
+            Line(style: .code, text: "a"), Line(style: .code, text: "b", fence: CodeFence(info: "sh")),
+        ]) == "```\na\n```\n```sh\nb\n```")
+    }
+
+    @Test func lengthensTheFenceIfALineWouldCloseIt() {
+        let markdown = MarkdownCodec.markdown(from: [Line(style: .code, text: "```"), Line(style: .code, text: "x")])
+        #expect(markdown == "````\n```\nx\n````")
+        #expect(MarkdownCodec.lines(fromMarkdown: markdown).map(\.text) == ["```", "x"])
+    }
+
+    @Test(arguments: [
+        "```", "```\n```", "```\nno closing", "````\nx\n```", "```\na\n```\nb\n```",
+        "```js\n\n  indented\n```", "\\```\nx\n```", "text ```\n```",
+    ])
+    func codeBlocksRoundTrip(markdown: String) {
+        #expect(MarkdownCodec.markdown(from: MarkdownCodec.lines(fromMarkdown: markdown)) == markdown)
+    }
+
+    @Test func escapesParagraphsThatWouldOpenACodeBlock() {
+        let lines = [Line(style: .paragraph, text: "```"), Line(style: .paragraph, text: "x"),
+                     Line(style: .paragraph, text: "```")]
+        let markdown = MarkdownCodec.markdown(from: lines)
+        #expect(markdown == "\\```\nx\n```")
+        #expect(MarkdownCodec.lines(fromMarkdown: markdown) == lines)
+    }
 }

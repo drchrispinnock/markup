@@ -1226,3 +1226,166 @@ import Testing
 
     }
 }
+
+/// Inline code and code blocks.
+@MainActor
+@Suite struct CodeTests {
+    let document: MarkdownDocument
+    let editor: EditorWindowController
+
+    init() {
+        _ = NSApplication.shared
+        document = MarkdownDocument()
+        document.undoManager?.groupsByEvent = false
+        document.makeWindowControllers()
+        editor = document.windowControllers.first as! EditorWindowController
+    }
+
+    private var textView: EditorTextView { editor.textView }
+    private var storage: NSTextStorage { editor.storage }
+
+    private func step(_ action: () -> Void) {
+        document.undoManager?.beginUndoGrouping()
+        action()
+        document.undoManager?.endUndoGrouping()
+    }
+
+    private func type(_ text: String) {
+        for character in text {
+            if character == "\n" {
+                step { textView.doCommand(by: #selector(NSResponder.insertNewline(_:))) }
+            } else {
+                step { textView.insertText(String(character), replacementRange: textView.selectedRange()) }
+            }
+        }
+    }
+
+    private func select(_ location: Int, _ length: Int = 0) {
+        step { textView.setSelectedRange(NSRange(location: location, length: length)) }
+    }
+
+    private func font(at index: Int) -> NSFont {
+        storage.attribute(.font, at: index, effectiveRange: nil) as! NSFont
+    }
+
+    @Test func showsAndSavesInlineCode() {
+        let markdown = "run `ls *.md` and **`bold code`**"
+        editor.load(markdown: markdown)
+        #expect(storage.string == "run ls *.md and bold code")
+        #expect(storage.inlineStyles(at: 4) == [.code])
+        #expect(font(at: 4).isFixedPitch)
+        #expect(!font(at: 0).isFixedPitch)
+        #expect(storage.attribute(.backgroundColor, at: 4, effectiveRange: nil) != nil)
+        #expect(storage.inlineStyles(at: 16) == [.bold, .code])
+        #expect(editor.markdown == markdown)
+    }
+
+    @Test func codeButtonTogglesTheSelection() {
+        type("call foo now")
+        select(5, 3)
+        step { editor.codeButton.performClick(nil) }
+        #expect(editor.markdown == "call `foo` now")
+        #expect(editor.codeButton.state == .on)
+        step { editor.toggleCode(nil) }
+        #expect(editor.markdown == "call foo now")
+        #expect(storage.attribute(.backgroundColor, at: 5, effectiveRange: nil) == nil)
+    }
+
+    @Test func typedBackticksBecomeCodeAndItsTextStaysLiteral() {
+        type("use `a*b*c` then *it*.")
+        #expect(storage.string == "use a*b*c then it.")
+        #expect(storage.inlineStyles(at: 5) == [.code])
+        #expect(storage.inlineStyles(at: 15) == [.italic])
+        #expect(editor.markdown == "use `a*b*c` then *it*.")
+    }
+
+    @Test func showsAndSavesCodeBlocks() {
+        let markdown = "Before\n```swift\nlet x = 1\n# not a heading\n- **not bold**\n```\nAfter"
+        editor.load(markdown: markdown)
+        #expect(storage.string == "Before\nlet x = 1\n# not a heading\n- **not bold**\nAfter")
+        #expect(storage.blockStyle(at: 7) == .code)
+        #expect(storage.blockStyle(at: 33) == .code)
+        #expect(font(at: 7).isFixedPitch)
+        #expect(storage.blockStyle(at: storage.length - 1) == .paragraph)
+        #expect(editor.markdown == markdown)
+    }
+
+    @Test func keepsNeighbouringBlocksApart() {
+        let markdown = "```sh\na\n```\n```\nb\n```"
+        editor.load(markdown: markdown)
+        #expect(editor.markdown == markdown)
+        // A new line at the start of a block stays in that block.
+        select(0)
+        type("\n")
+        #expect(editor.markdown == "```sh\n\na\n```\n```\nb\n```")
+    }
+
+    @Test func codeStyleFromThePopup() {
+        editor.load(markdown: "one **two**\nthree")
+        select(0, storage.length)
+        editor.stylePopUp.selectItem(withTag: BlockStyle.code.rawValue)
+        step { editor.styleChosen(editor.stylePopUp) }
+        #expect(editor.markdown == "```\none two\nthree\n```")
+        #expect(editor.stylePopUp.selectedItem?.title == "Code")
+        editor.stylePopUp.selectItem(withTag: BlockStyle.paragraph.rawValue)
+        step { editor.styleChosen(editor.stylePopUp) }
+        #expect(editor.markdown == "one two\nthree")
+    }
+
+    @Test func typingAFenceStartsABlockAndAnEmptyLineEndsIt() {
+        type("Intro\n```python\nif x:\n    # comment\n\nOutro")
+        #expect(editor.markdown == "Intro\n```python\nif x:\n    # comment\n```\nOutro")
+        #expect(storage.blockStyle(at: 6) == .code)
+    }
+
+    @Test func markdownTypedInCodeStaysText() {
+        type("```\n# a\n- b\n**c** `d` ![](e.png)")
+        #expect(storage.string == "# a\n- b\n**c** `d` ![](e.png)")
+        #expect(editor.markdown == "```\n# a\n- b\n**c** `d` ![](e.png)\n```")
+    }
+
+    @Test func inlineStyleButtonsSkipCodeBlocks() {
+        editor.load(markdown: "text\n```\ncode\n```")
+        select(0, storage.length)
+        step { editor.toggleBold(nil) }
+        #expect(editor.markdown == "**text**\n```\ncode\n```")
+    }
+
+    @Test func copiesCodeAsTyped() {
+        editor.load(markdown: "a `b*`\n```\n*c*\n```")
+        #expect(editor.plainText(for: NSRange(location: 0, length: storage.length)) == "a `b*`\n*c*")
+    }
+
+    @Test func menusAndButtons() {
+        let menu = MainMenu.make()
+        let code = menu.items.first { $0.title == "Format" }!.submenu!.items.first { $0.title == "Code" }!
+        #expect(code.keyEquivalent == "e")
+        let reload = menu.items.first { $0.title == "View" }!.submenu!.items.first { $0.title == "Reload Images" }!
+        #expect(reload.keyEquivalent == "R")
+        #expect(BlockStyle.allCases.map(\.title).contains("Code"))
+        editor.window!.layoutIfNeeded()
+        #expect(editor.codeButton.frame.minX > editor.strikethroughButton.frame.maxX)
+        #expect(editor.imageButton.frame.minX > editor.codeButton.frame.maxX)
+    }
+
+    @Test func reloadImagesReadsTheFilesAgain() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("MarkupReload-\(UUID())")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        document.fileURL = folder.appendingPathComponent("doc.md")
+        let image = folder.appendingPathComponent("pic.png")
+        try ImageTests.writePNG(width: 40, height: 20, to: image)
+        editor.load(markdown: "![](pic.png)")
+        func size() -> NSSize? {
+            ((storage.attribute(.attachment, at: 0, effectiveRange: nil) as? NSTextAttachment)?.attachmentCell
+                as? ImageAttachmentCell)?.cellSize()
+        }
+        #expect(size() == NSSize(width: 40, height: 20))
+        try ImageTests.writePNG(width: 60, height: 30, to: image)
+        editor.reloadImages(nil)
+        #expect(size() == NSSize(width: 60, height: 30))
+        #expect(editor.markdown == "![](pic.png)")
+        #expect(document.undoManager?.canUndo == false)
+
+    }
+}

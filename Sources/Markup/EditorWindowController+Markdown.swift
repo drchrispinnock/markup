@@ -19,11 +19,20 @@ extension EditorWindowController {
     static func formattedText(fromMarkdown markdown: String, imageFolders: [URL]) -> NSAttributedString {
         let lines = MarkdownCodec.lines(fromMarkdown: markdown)
         let text = NSMutableAttributedString()
+        var blockFence: CodeFence?
         for (index, line) in lines.enumerated() {
             let terminator = index < lines.count - 1 ? "\n" : ""
             if let item = line.list {
                 text.append(item.markerString)
                 text.append(inlineText(line.text + terminator, attributes: item.lineAttributes, imageFolders: imageFolders))
+            } else if line.style == .code {
+                // Code is kept as typed. Its block's fence, if not plain,
+                // is on every character, so later lines can be told apart
+                // from the next block.
+                if let fence = line.fence { blockFence = fence == CodeFence() ? nil : fence }
+                var attributes = BlockStyle.code.attributes
+                attributes[.codeFence] = blockFence
+                text.append(NSAttributedString(string: line.text + terminator, attributes: attributes))
             } else {
                 text.append(inlineText(line.text + terminator, attributes: line.style.attributes, imageFolders: imageFolders))
             }
@@ -65,6 +74,14 @@ extension EditorWindowController {
             if let item = listItem(at: line) {
                 let text = inlineMarkdown(in: NSRange(location: contents.location + 1, length: contents.length - 1))
                 lines.append(Line(style: .paragraph, text: text, list: item))
+            } else if line.length > 0, storage.blockStyle(at: line.location) == .code {
+                // A block starts after a line that isn't code, or where the
+                // fence changes.
+                let fence = storage.attribute(.codeFence, at: line.location, effectiveRange: nil) as? CodeFence
+                let startsBlock = lines.last?.style != .code || line.location == 0
+                    || storage.attribute(.codeFence, at: line.location - 1, effectiveRange: nil) as? CodeFence != fence
+                lines.append(Line(style: .code, text: markdownText(in: contents),
+                                  fence: startsBlock ? fence ?? CodeFence() : nil))
             } else {
                 let style = line.length > 0 ? storage.blockStyle(at: line.location) : .paragraph
                 lines.append(Line(style: style, text: inlineMarkdown(in: contents)))
@@ -112,13 +129,15 @@ extension EditorWindowController {
         var text = ""
         storage.enumerateAttribute(.listMarker, in: range) { value, run, _ in
             guard let raw = value as? Int, let marker = ListMarker(rawValue: raw) else {
-                // Inline styles are written line by line.
+                // Inline styles are written line by line. Code is as typed.
                 let string = storage.string as NSString
                 var location = run.location
                 while location < NSMaxRange(run) {
                     let newline = string.range(of: "\n", range: NSRange(location: location, length: NSMaxRange(run) - location))
                     let end = newline.location == NSNotFound ? NSMaxRange(run) : newline.location
-                    text += inlineMarkdown(in: NSRange(location: location, length: end - location))
+                    let segment = NSRange(location: location, length: end - location)
+                    text += segment.length > 0 && storage.blockStyle(at: location) == .code
+                        ? markdownText(in: segment) : inlineMarkdown(in: segment)
                     if newline.location != NSNotFound { text += "\n" }
                     location = newline.location == NSNotFound ? end : NSMaxRange(newline)
                 }

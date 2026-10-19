@@ -52,11 +52,14 @@ enum MainMenu {
         formatMenu.addItem(withTitle: "Italic", action: #selector(EditorWindowController.toggleItalic(_:)), keyEquivalent: "i")
         formatMenu.addItem(withTitle: "Strikethrough",
                            action: #selector(EditorWindowController.toggleStrikethrough(_:)), keyEquivalent: "X")
+        formatMenu.addItem(withTitle: "Code", action: #selector(EditorWindowController.toggleCode(_:)), keyEquivalent: "e")
         mainMenu.addItem(submenu: formatMenu, title: "Format")
 
         let viewMenu = NSMenu(title: "View")
         viewMenu.addItem(withTitle: "Show Markdown",
                          action: #selector(EditorWindowController.toggleMarkdown(_:)), keyEquivalent: "M")
+        viewMenu.addItem(withTitle: "Reload Images",
+                         action: #selector(EditorWindowController.reloadImages(_:)), keyEquivalent: "R")
         mainMenu.addItem(submenu: viewMenu, title: "View")
 
         let windowMenu = NSMenu(title: "Window")
