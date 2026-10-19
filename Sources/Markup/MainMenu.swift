@@ -53,6 +53,10 @@ enum MainMenu {
         formatMenu.addItem(withTitle: "Strikethrough",
                            action: #selector(EditorWindowController.toggleStrikethrough(_:)), keyEquivalent: "X")
         formatMenu.addItem(withTitle: "Code", action: #selector(EditorWindowController.toggleCode(_:)), keyEquivalent: "e")
+        formatMenu.addItem(withTitle: "Subscript", action: #selector(EditorWindowController.toggleSubscript(_:)),
+                           keyEquivalent: "-").keyEquivalentModifierMask = [.command, .control]
+        formatMenu.addItem(withTitle: "Superscript", action: #selector(EditorWindowController.toggleSuperscript(_:)),
+                           keyEquivalent: "=").keyEquivalentModifierMask = [.command, .control]
         mainMenu.addItem(submenu: formatMenu, title: "Format")
 
         let viewMenu = NSMenu(title: "View")

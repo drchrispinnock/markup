@@ -10,6 +10,10 @@ extension NSAttributedString.Key {
     static let inlineStrikethrough = NSAttributedString.Key("MarkupInlineStrikethrough")
     /// True on inline code characters (`` `code` ``).
     static let inlineCode = NSAttributedString.Key("MarkupInlineCode")
+    /// True on subscript characters (`H_2_O`).
+    static let inlineSubscript = NSAttributedString.Key("MarkupInlineSubscript")
+    /// True on superscript characters (`x^2^`).
+    static let inlineSuperscript = NSAttributedString.Key("MarkupInlineSuperscript")
 }
 
 extension InlineStyle {
@@ -20,6 +24,8 @@ extension InlineStyle {
         case .italic: .inlineItalic
         case .strikethrough: .inlineStrikethrough
         case .code: .inlineCode
+        case .subscript: .inlineSubscript
+        case .superscript: .inlineSuperscript
         }
     }
 
@@ -33,21 +39,33 @@ extension InlineStyle {
 
 extension BlockStyle {
     /// The font for text in this style with `styles`: bold and/or italic,
-    /// and monospaced (a little smaller) for code.
+    /// monospaced (a little smaller) for code, and smaller for subscript and
+    /// superscript.
     func font(for styles: Set<InlineStyle>) -> NSFont {
-        let base = styles.contains(.code) ? NSFont.monospacedSystemFont(ofSize: round(font.pointSize * 0.9), weight: .regular)
+        var base = styles.contains(.code) ? NSFont.monospacedSystemFont(ofSize: round(font.pointSize * 0.9), weight: .regular)
             : font
+        if !styles.isDisjoint(with: [.subscript, .superscript]) {
+            base = NSFont(descriptor: base.fontDescriptor, size: round(base.pointSize * 0.75)) ?? base
+        }
         var traits = base.fontDescriptor.symbolicTraits
         if styles.contains(.bold) { traits.insert(.bold) }
         if styles.contains(.italic) { traits.insert(.italic) }
         guard traits != base.fontDescriptor.symbolicTraits else { return base }
         return NSFont(descriptor: base.fontDescriptor.withSymbolicTraits(traits), size: base.pointSize) ?? base
     }
+
+    /// How far text in this style with `styles` is raised (superscript) or
+    /// lowered (subscript), if at all. Superscript wins if both are set.
+    func baselineOffset(for styles: Set<InlineStyle>) -> CGFloat? {
+        if styles.contains(.superscript) { return round(font.pointSize * 0.35) }
+        if styles.contains(.subscript) { return -round(font.pointSize * 0.15) }
+        return nil
+    }
 }
 
 extension Dictionary where Key == NSAttributedString.Key, Value == Any {
-    /// These attributes with just `styles`, and the font, strikethrough and
-    /// shading to show them.
+    /// These attributes with just `styles`, and the font, strikethrough,
+    /// shading and baseline offset to show them.
     func withInlineStyles(_ styles: Set<InlineStyle>) -> [NSAttributedString.Key: Any] {
         var attributes = self
         for style in InlineStyle.allCases {
@@ -57,6 +75,7 @@ extension Dictionary where Key == NSAttributedString.Key, Value == Any {
         attributes[.font] = blockStyle.font(for: styles)
         attributes[.strikethroughStyle] = styles.contains(.strikethrough) ? NSUnderlineStyle.single.rawValue : nil
         attributes[.backgroundColor] = styles.contains(.code) ? InlineStyle.codeBackground : nil
+        attributes[.baselineOffset] = blockStyle.baselineOffset(for: styles)
         return attributes
     }
 }
@@ -76,13 +95,14 @@ extension NSAttributedString {
 }
 
 extension NSMutableAttributedString {
-    /// Sets the font, strikethrough and shading of every character in
-    /// `range` from its line's style and its inline styles. Needed wherever
-    /// a line's style is set, since that sets the plain font.
+    /// Sets the font, strikethrough, shading and baseline offset of every
+    /// character in `range` from its line's style and its inline styles.
+    /// Needed wherever a line's style is set, since that sets the plain font.
     func applyInlineStyles(in range: NSRange) {
         enumerateAttributes(in: range) { attributes, run, _ in
             let style = (attributes[.blockStyle] as? Int).flatMap(BlockStyle.init) ?? .paragraph
-            let font = style.font(for: Set(InlineStyle.allCases.filter { attributes[$0.key] != nil }))
+            let styles = Set(InlineStyle.allCases.filter { attributes[$0.key] != nil })
+            let font = style.font(for: styles)
             if attributes[.font] as? NSFont != font {
                 addAttribute(.font, value: font, range: run)
             }
@@ -95,6 +115,13 @@ extension NSMutableAttributedString {
                 addAttribute(.backgroundColor, value: InlineStyle.codeBackground, range: run)
             } else if attributes[.backgroundColor] != nil {
                 removeAttribute(.backgroundColor, range: run)
+            }
+            if let offset = style.baselineOffset(for: styles) {
+                if attributes[.baselineOffset] as? CGFloat != offset {
+                    addAttribute(.baselineOffset, value: offset, range: run)
+                }
+            } else if attributes[.baselineOffset] != nil {
+                removeAttribute(.baselineOffset, range: run)
             }
         }
     }

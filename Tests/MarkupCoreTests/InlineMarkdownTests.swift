@@ -118,11 +118,12 @@ import Testing
         #expect(InlineMarkdown.spans(in: InlineMarkdown.markdown(for: spans)) == spans)
     }
 
-    /// Every character's emphasis, as (character, bold, italic).
+    /// Every character with its styles' initials.
     private func flags(_ spans: [InlineSpan]) -> [String] {
         spans.flatMap { span in
             span.text.map {
                 "\($0)\(span.bold ? "B" : "")\(span.italic ? "I" : "")\(span.strikethrough ? "S" : "")\(span.code ? "C" : "")"
+                    + "\(span.subscript ? "_" : "")\(span.superscript ? "^" : "")"
             }
         }
     }
@@ -131,10 +132,14 @@ import Testing
     /// was written. (Emphasis changing in the middle of a word, such as
     /// italic "x" straight into bold "a", can't always be written in Markdown:
     /// the closing and opening asterisks run together.)
-    @Test func roundTripsAnyMixOfEmphasisBetweenWords() {
-        let words = ["a", "*", "~~", "`"]
+    @Test(arguments: [
+        ([InlineStyle.bold, .italic, .strikethrough, .code], ["a", "*", "~~", "`"]),
+        ([InlineStyle.subscript, .superscript, .italic, .code], ["a", "_", "^", "`"]),
+        ([InlineStyle.subscript, .superscript, .bold, .strikethrough], ["a", "_", "*", "~~"]),
+    ])
+    func roundTripsAnyMixOfEmphasisBetweenWords(styleList: [InlineStyle], words: [String]) {
         func styles(_ bits: Int) -> Set<InlineStyle> {
-            Set(InlineStyle.allCases.enumerated().filter { bits & (1 << $0.offset) != 0 }.map(\.element))
+            Set(styleList.enumerated().filter { bits & (1 << $0.offset) != 0 }.map(\.element))
         }
         for first in words {
             for second in words {
@@ -144,7 +149,7 @@ import Testing
                             InlineSpan(first, styles: styles(flagBits)),
                             InlineSpan(" "),
                             InlineSpan(second, styles: styles(flagBits >> 4)),
-                            InlineSpan(" ", styles: styles(flagBits >> 4).subtracting([.code])),
+                            InlineSpan(" ", styles: styles(flagBits >> 4).subtracting([.code, .subscript, .superscript])),
                             InlineSpan(third, styles: styles(flagBits >> 8)),
                         ]
                         let markdown = InlineMarkdown.markdown(for: spans)
@@ -159,6 +164,31 @@ import Testing
                 }
             }
         }
+    }
+
+    @Test func readsSubscriptAndSuperscript() {
+        #expect(InlineMarkdown.spans(in: "H_2_O and x^2^") == [
+            InlineSpan("H"), InlineSpan("2", subscript: true), InlineSpan("O and x"), InlineSpan("2", superscript: true),
+        ])
+        #expect(InlineMarkdown.spans(in: "**x_i_**") == [InlineSpan("x", bold: true), InlineSpan("i", bold: true, subscript: true)])
+    }
+
+    @Test func subscriptAndSuperscriptDontSpanWhitespace() {
+        for text in ["x^2 + y^2", "snake_case and other_name", "a _b c_ d", "__init__", "2^^3^^"] {
+            #expect(InlineMarkdown.spans(in: text) == [InlineSpan(text)], "\(text)")
+        }
+        #expect(InlineMarkdown.spans(in: "x_`a b`_") == [InlineSpan("x"), InlineSpan("a b", code: true, subscript: true)])
+        #expect(InlineMarkdown.spans(in: "my_var_name") == [InlineSpan("my"), InlineSpan("var", subscript: true),
+                                                             InlineSpan("name")])
+    }
+
+    @Test func writesSubscriptAndSuperscript() {
+        #expect(InlineMarkdown.markdown(for: [InlineSpan("H"), InlineSpan("2", subscript: true), InlineSpan("O")]) == "H_2_O")
+        #expect(InlineMarkdown.markdown(for: [InlineSpan("e"), InlineSpan("i pi", superscript: true)]) == "e^i^ ^pi^")
+        #expect(InlineMarkdown.markdown(for: [InlineSpan("x", bold: true), InlineSpan("2", bold: true, superscript: true)])
+            == "**x^2^**")
+        #expect(InlineMarkdown.markdown(for: [InlineSpan("my_var_name")]) == #"my\_var\_name"#)
+        #expect(InlineMarkdown.markdown(for: [InlineSpan("x^2 + y^2")]) == "x^2 + y^2")
     }
 
     @Test func keepsTheTextWhenEmphasisChangesMidWord() {

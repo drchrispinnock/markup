@@ -1,10 +1,11 @@
 import AppKit
 import MarkupCore
 
-/// Bold, italic, strikethrough and inline code: the header's buttons and the
-/// Format menu. With text selected they apply the style to it, or take it
-/// off if it all already has it. With no selection they change what is
-/// typed next. Code blocks keep their text as typed, so these don't apply in
+/// Bold, italic, strikethrough, inline code, subscript and superscript: the
+/// header's buttons and the Format menu. With text selected they apply the
+/// style to it, or take it off if it all already has it. With no selection
+/// they change what is typed next. Subscript and superscript each take off
+/// the other. Code blocks keep their text as typed, so these don't apply in
 /// them.
 extension EditorWindowController {
     @objc func toggleBold(_ sender: Any?) {
@@ -23,21 +24,41 @@ extension EditorWindowController {
         toggle(.code, actionName: "Code")
     }
 
+    @objc func toggleSubscript(_ sender: Any?) {
+        toggle(.subscript, actionName: "Subscript")
+    }
+
+    @objc func toggleSuperscript(_ sender: Any?) {
+        toggle(.superscript, actionName: "Superscript")
+    }
+
     func button(for style: InlineStyle) -> NSButton {
         switch style {
         case .bold: boldButton
         case .italic: italicButton
         case .strikethrough: strikethroughButton
         case .code: codeButton
+        case .subscript: subscriptButton
+        case .superscript: superscriptButton
         }
     }
 
     private func toggle(_ style: InlineStyle, actionName: String) {
         guard !isShowingMarkdown else { return }
+        let opposite: InlineStyle? = switch style {
+        case .subscript: .superscript
+        case .superscript: .subscript
+        default: nil
+        }
         let selection = textView.selectedRange()
         if selection.length == 0 {
             var styles = inlineStylesAtCaret()
-            if styles.contains(style) { styles.remove(style) } else { styles.insert(style) }
+            if styles.contains(style) {
+                styles.remove(style)
+            } else {
+                styles.insert(style)
+                if let opposite { styles.remove(opposite) }
+            }
             typingStyles = (selection.location, styles)
             updateForSelection()
             return
@@ -48,6 +69,7 @@ extension EditorWindowController {
                 guard value as? Int != BlockStyle.code.rawValue else { return }
                 if turnOn {
                     storage.addAttribute(style.key, value: true, range: run)
+                    if let opposite { storage.removeAttribute(opposite.key, range: run) }
                 } else {
                     storage.removeAttribute(style.key, range: run)
                 }

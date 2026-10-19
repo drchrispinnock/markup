@@ -23,6 +23,12 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
     let codeButton = NSButton(
         image: NSImage(systemSymbolName: "chevron.left.forwardslash.chevron.right", accessibilityDescription: "Code")!,
         target: nil, action: nil)
+    let subscriptButton = NSButton(
+        image: NSImage(systemSymbolName: "textformat.subscript", accessibilityDescription: "Subscript")!,
+        target: nil, action: nil)
+    let superscriptButton = NSButton(
+        image: NSImage(systemSymbolName: "textformat.superscript", accessibilityDescription: "Superscript")!,
+        target: nil, action: nil)
     let imageButton = NSButton(image: NSImage(systemSymbolName: "photo", accessibilityDescription: "Insert Image")!,
                                target: nil, action: nil)
     let textView = EditorTextView(usingTextLayoutManager: false)
@@ -80,7 +86,9 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
         for (button, action, tip) in [(boldButton, #selector(toggleBold(_:)), "Bold (⌘B)"),
                                       (italicButton, #selector(toggleItalic(_:)), "Italic (⌘I)"),
                                       (strikethroughButton, #selector(toggleStrikethrough(_:)), "Strikethrough (⇧⌘X)"),
-                                      (codeButton, #selector(toggleCode(_:)), "Code (⌘E)")] {
+                                      (codeButton, #selector(toggleCode(_:)), "Code (⌘E)"),
+                                      (subscriptButton, #selector(toggleSubscript(_:)), "Subscript (⌃⌘-)"),
+                                      (superscriptButton, #selector(toggleSuperscript(_:)), "Superscript (⌃⌘=)")] {
             button.setButtonType(.pushOnPushOff)
             button.target = self
             button.action = action
@@ -109,7 +117,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
             view.translatesAutoresizingMaskIntoConstraints = false
             contentView.addSubview(view)
         }
-        for control in [stylePopUp, boldButton, italicButton, strikethroughButton, codeButton, imageButton, viewModeControl] {
+        for control in [stylePopUp, boldButton, italicButton, strikethroughButton, codeButton, subscriptButton, superscriptButton,
+                        imageButton, viewModeControl] {
             control.translatesAutoresizingMaskIntoConstraints = false
             headerView.addSubview(control)
         }
@@ -131,6 +140,10 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
             strikethroughButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
             codeButton.leadingAnchor.constraint(equalTo: strikethroughButton.trailingAnchor, constant: 4),
             codeButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+            subscriptButton.leadingAnchor.constraint(equalTo: codeButton.trailingAnchor, constant: 4),
+            subscriptButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+            superscriptButton.leadingAnchor.constraint(equalTo: subscriptButton.trailingAnchor, constant: 4),
+            superscriptButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
 
             imageButton.trailingAnchor.constraint(equalTo: viewModeControl.leadingAnchor, constant: -8),
             imageButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),

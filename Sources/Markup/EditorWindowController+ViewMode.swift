@@ -97,6 +97,12 @@ extension EditorWindowController: NSMenuItemValidation {
         case #selector(toggleCode(_:)):
             menuItem.state = codeButton.state
             return !isShowingMarkdown
+        case #selector(toggleSubscript(_:)):
+            menuItem.state = subscriptButton.state
+            return !isShowingMarkdown
+        case #selector(toggleSuperscript(_:)):
+            menuItem.state = superscriptButton.state
+            return !isShowingMarkdown
         default:
             break
         }

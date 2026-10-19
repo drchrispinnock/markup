@@ -1215,6 +1215,54 @@ import Testing
         #expect(editor.markdown == "a ~~gone~~ b and x ~ y")
     }
 
+    @Test func subscriptAndSuperscriptButtonsToggleTheSelection() {
+        type("H2O x2")
+        select(1, 1)
+        step { editor.subscriptButton.performClick(nil) }
+        #expect(editor.markdown == "H_2_O x2")
+        #expect(editor.subscriptButton.state == .on && editor.superscriptButton.state == .off)
+        let offset = storage.attribute(.baselineOffset, at: 1, effectiveRange: nil) as? CGFloat
+        #expect(offset.map { $0 < 0 } == true)
+        let small = storage.attribute(.font, at: 1, effectiveRange: nil) as? NSFont
+        let normal = storage.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+        #expect(small!.pointSize < normal!.pointSize)
+
+        select(5, 1)
+        step { editor.toggleSuperscript(nil) }
+        #expect(editor.markdown == "H_2_O x^2^")
+        #expect((storage.attribute(.baselineOffset, at: 5, effectiveRange: nil) as? CGFloat).map { $0 > 0 } == true)
+        // Subscript replaces superscript.
+        step { editor.toggleSubscript(nil) }
+        #expect(editor.markdown == "H_2_O x_2_")
+        step { editor.toggleSubscript(nil) }
+        #expect(editor.markdown == "H_2_O x2")
+        #expect(storage.attribute(.baselineOffset, at: 5, effectiveRange: nil) == nil)
+    }
+
+    @Test func superscriptButtonWithNoSelectionStylesWhatIsTyped() {
+        type("x")
+        step { editor.superscriptButton.performClick(nil) }
+        type("2")
+        step { editor.superscriptButton.performClick(nil) }
+        type(" y")
+        #expect(editor.markdown == "x^2^ y")
+    }
+
+    @Test func typedUnderscoresAndCaretsBecomeSubscriptAndSuperscript() {
+        type("H_2_O and x^2^ but x^2 + y^2 and my_var name")
+        #expect(storage.string == "H2O and x2 but x^2 + y^2 and my_var name")
+        #expect(storage.inlineStyles(at: 1) == [.subscript])
+        #expect(storage.inlineStyles(at: 9) == [.superscript])
+        #expect(editor.markdown == "H_2_O and x^2^ but x^2 + y^2 and my_var name")
+    }
+
+    @Test func subscriptAndSuperscriptButtonsAreLaidOutAfterCode() {
+        editor.window!.layoutIfNeeded()
+        #expect(editor.subscriptButton.frame.minX > editor.codeButton.frame.maxX)
+        #expect(editor.superscriptButton.frame.minX > editor.subscriptButton.frame.maxX)
+        #expect(editor.imageButton.frame.minX > editor.superscriptButton.frame.maxX + 50)
+    }
+
     @Test func headerLayout() {
         let window = editor.window!
         window.layoutIfNeeded()

@@ -7,8 +7,9 @@ extension EditorWindowController {
     /// - "# ", "## " and "### " make the line a heading of that level.
     /// - "- " makes a paragraph a bullet, and "[ ] " or "[x] " at the start of
     ///   a bullet makes it a checkbox.
-    /// - "*italic*", "**bold**", "***both***", "~~strikethrough~~" and
-    ///   "`code`" anywhere in a line become styled text.
+    /// - "*italic*", "**bold**", "***both***", "~~strikethrough~~", "`code`",
+    ///   "_subscript_" and "^superscript^" anywhere in a line become styled
+    ///   text.
     /// - "![alt](path)" anywhere in a line becomes the image.
     ///
     /// Lines of code blocks, and inline code, are left as typed.
@@ -128,15 +129,14 @@ extension EditorWindowController {
 
     /// Replaces typed or pasted inline styles that the edit touched, or that
     /// the edit was typed just after, with styled text. A just-typed closing
-    /// asterisk, tilde or backtick waits for the next character: an asterisk
-    /// may be the first of two, and the next character shouldn't take the
-    /// style.
+    /// delimiter (asterisk, tilde, backtick, underscore or caret) waits for
+    /// the next character: an asterisk may be the first of two, and the next
+    /// character shouldn't take the style.
     private func convertEmphasis(in line: NSRange, after edit: NSRange) {
         let contents = contentsRange(of: line)
         let string = storage.string as NSString
         let typedDelimiter = edit.length == 1 && NSMaxRange(edit) <= string.length
-            && [UInt16(UInt8(ascii: "*")), UInt16(UInt8(ascii: "~")), UInt16(UInt8(ascii: "`"))]
-                .contains(string.character(at: edit.location))
+            && "*~`_^".utf16.contains(string.character(at: edit.location))
         let found = InlineMarkdown.emphases(in: string.substring(with: contents)).map { emphasis in
             (opening: NSRange(location: contents.location + emphasis.opening.lowerBound, length: emphasis.opening.count),
              closing: NSRange(location: contents.location + emphasis.closing.lowerBound, length: emphasis.closing.count),
