@@ -1,14 +1,17 @@
 import AppKit
 import MarkupCore
 
-/// A document window: a header strip with the style popup, above the editor.
+/// A document's editor: a header strip with the style popup and buttons,
+/// above the text. Each document has one, shown in its own window
+/// (`DocumentWindowController`) or in a project window
+/// (`ProjectWindowController`).
 ///
 /// The text view never contains Markdown markers. Each line's style lives in
 /// attributes on its characters: `.blockStyle` for headings, and for list
 /// items an attachment character at the start of the line (`.listMarker`)
 /// plus `.listLevel`. `markdown` turns these back into Markdown.
 @MainActor
-final class EditorWindowController: NSWindowController, NSWindowDelegate, NSTextViewDelegate, NSTextStorageDelegate {
+final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextStorageDelegate {
     static let headerHeight: CGFloat = 44
 
     let headerView = NSVisualEffectView()
@@ -60,17 +63,11 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
     /// Where the images directory comes from.
     var settings = Settings.shared
 
-    init() {
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.minSize = NSSize(width: 480, height: 320)
-        window.center()
+    /// The document being edited. It owns this controller.
+    weak var document: MarkdownDocument?
 
-        super.init(window: window)
+    init() {
+        super.init(nibName: nil, bundle: nil)
 
         headerView.material = .headerView
         headerView.blendingMode = .withinWindow
@@ -161,9 +158,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
             scrollView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
         ])
 
-        window.contentView = contentView
-        window.initialFirstResponder = textView
-        window.delegate = self
+        view = contentView
         textView.delegate = self
         storage.delegate = self
         textView.markerClickHandler = { [unowned self] index in toggleCheckbox(at: index) }
@@ -427,19 +422,10 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
         return found
     }
 
-    // MARK: - NSWindowDelegate
-
-    var markdownDocument: MarkdownDocument? {
-        document as? MarkdownDocument
-    }
-
     // Typing and style changes register undo on the document's undo manager,
-    // which is how the document tracks unsaved changes.
+    // which is how the document tracks unsaved changes. The windows return
+    // it too.
     override var undoManager: UndoManager? {
-        markdownDocument?.undoManager
-    }
-
-    func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? {
-        undoManager
+        document?.undoManager
     }
 }

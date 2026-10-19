@@ -10,7 +10,7 @@ public enum InlineStyle: CaseIterable, Sendable {
     case superscript
 
     /// The delimiter written on each side: `**bold**`, `*italic*`,
-    /// `~~strikethrough~~`, `` `code` ``, `H_2_O`, `x^2^`. Code needs more
+    /// `~~strikethrough~~`, `` `code` ``, `H~2~O`, `x^2^`. Code needs more
     /// backticks if its text has some.
     public var delimiter: String {
         switch self {
@@ -18,7 +18,7 @@ public enum InlineStyle: CaseIterable, Sendable {
         case .italic: "*"
         case .strikethrough: "~~"
         case .code: "`"
-        case .subscript: "_"
+        case .subscript: "~"
         case .superscript: "^"
         }
     }
@@ -51,24 +51,25 @@ public struct InlineSpan: Equatable, Sendable {
 
 /// Bold, italic, strikethrough, code, subscript and superscript within a
 /// line: `**bold**`, `*italic*`, `***both***`, `~~strikethrough~~`,
-/// `` `code` ``, `H_2_O` and `x^2^`. Images are kept whole, as their
-/// Markdown. A backslash makes an asterisk, tilde, backtick, underscore or
-/// caret literal (`\*`, `\~`, `` \` ``, `\_`, `\^`).
+/// `` `code` ``, `H~2~O` and `x^2^`. Images are kept whole, as their
+/// Markdown. A backslash makes an asterisk, tilde, backtick or caret literal
+/// (`\*`, `\~`, `` \` ``, `\^`).
 ///
 /// Code spans are read first, as in CommonMark: a run of backticks up to the
 /// next run of the same length, with the text between taken literally (and
 /// one space trimmed from each end if both have one).
 ///
 /// Delimiters are matched much as CommonMark (and GitHub, for
-/// strikethrough) match them: a run of asterisks, or two tildes, can open if
-/// it isn't followed by whitespace, and can close if it isn't preceded by
-/// whitespace. CommonMark's "rule of 3" applies to asterisk runs that can do
-/// both.
+/// strikethrough) match them: a run of asterisks, or of up to three tildes,
+/// can open if it isn't followed by whitespace, and can close if it isn't
+/// preceded by whitespace. CommonMark's "rule of 3" applies to asterisk runs
+/// that can do both. Tildes pair up like asterisks, two for strikethrough and
+/// one for subscript, so `~~~x~~~` is both.
 ///
-/// Subscript and superscript are single underscores and carets, as in
-/// Pandoc: they may be inside a word, and the text between can't contain
-/// whitespace (except within code or an image), so `x^2 + y^2` and `snake_case and other_name` stay as they
-/// are. (So underscores don't mean italic, as they would in CommonMark.)
+/// Subscript (`~`) and superscript (`^`) are as in Pandoc: they may be inside
+/// a word, and the text between can't contain whitespace (except within
+/// code or an image), so `x^2 + y^2` and `a ~ b ~ c` stay as they are.
+/// Underscores aren't read as emphasis.
 public enum InlineMarkdown {
     /// A styled range found in Markdown, with its opening and closing
     /// delimiters as UTF-16 offsets.
@@ -89,7 +90,7 @@ public enum InlineMarkdown {
     /// Markdown for `spans`. Spaces at the edges of styled text are written
     /// outside the delimiters, since a style can't start or end with one.
     /// Subscript and superscript can't hold whitespace, so they leave out
-    /// spaces. Literal asterisks, tildes, underscores and carets are escaped
+    /// spaces. Literal asterisks, tildes and carets are escaped
     /// only if they would otherwise be read as delimiters.
     public static func markdown(for spans: [InlineSpan]) -> String {
         let units = units(of: spans)
@@ -102,9 +103,8 @@ public enum InlineMarkdown {
     private static let star = UInt16(UInt8(ascii: "*"))
     private static let tilde = UInt16(UInt8(ascii: "~"))
     private static let backtick = UInt16(UInt8(ascii: "`"))
-    private static let underscore = UInt16(UInt8(ascii: "_"))
     private static let caret = UInt16(UInt8(ascii: "^"))
-    private static let escapable = [star, tilde, backtick, underscore, caret]
+    private static let escapable = [star, tilde, backtick, caret]
     private static let space = UInt16(UInt8(ascii: " "))
     private static let backslash = UInt16(UInt8(ascii: "\\"))
 
@@ -117,7 +117,7 @@ public enum InlineMarkdown {
         /// A code span's text, and its opening and closing delimiters
         /// (including any trimmed space).
         case code([UInt16], opening: Range<Int>, closing: Range<Int>)
-        /// A run of `length` asterisks, tildes, underscores or carets. Those
+        /// A run of `length` asterisks, tildes or carets. Those
         /// not yet used are
         /// lo..<hi.
         case delimiter(character: UInt16, lo: Int, hi: Int, length: Int, canOpen: Bool, canClose: Bool)
@@ -166,12 +166,12 @@ public enum InlineMarkdown {
                 appendText(units[image])
                 isTextWhitespace.replaceSubrange(image, with: repeatElement(false, count: image.count))
                 index = image.upperBound
-            } else if [star, tilde, underscore, caret].contains(unit) {
+            } else if [star, tilde, caret].contains(unit) {
                 var end = index
                 while end < units.count, units[end] == unit { end += 1 }
-                // Only a pair of tildes marks strikethrough, and only a
-                // single underscore or caret subscript or superscript.
-                guard unit == star || end - index == (unit == tilde ? 2 : 1) else {
+                // Up to three tildes mark strikethrough and subscript, and
+                // only a single caret superscript.
+                guard unit == star || end - index <= (unit == tilde ? 3 : 1) else {
                     appendText(units[index..<end])
                     index = end
                     continue
@@ -189,10 +189,10 @@ public enum InlineMarkdown {
         }
 
         // Match each closer with the nearest opener of the same character
-        // that it may close. Asterisks are used two at a time (bold) where
-        // both runs have two, else one (italic). Openers between the two can
-        // no longer be closed. Subscript and superscript can't span
-        // whitespace.
+        // that it may close. Asterisks and tildes are used two at a time
+        // (bold, strikethrough) where both runs have two, else one (italic,
+        // subscript). Openers between the two can no longer be closed.
+        // Subscript and superscript can't span whitespace.
         var emphases: [Emphasis] = []
         var regions: [(opener: Int, closer: Int, style: InlineStyle)] = []
         var openers: [Int] = []
@@ -200,9 +200,15 @@ public enum InlineMarkdown {
             guard case .delimiter(let character, var lo, let hi, let length, let canOpen, let canClose) = tokens[closer]
             else { continue }
             while canClose, lo < hi, let position = openers.lastIndex(where: { opener in
-                guard case .delimiter(let openerCharacter, _, let openerHi, let openerLength, _, let openerCanClose) = tokens[opener],
+                guard case .delimiter(let openerCharacter, let openerLo, let openerHi, let openerLength, _,
+                                      let openerCanClose) = tokens[opener],
                       openerCharacter == character else { return false }
-                if character == underscore || character == caret {
+                // Tildes pair with as many tildes, except that a run of three
+                // can be split into strikethrough and subscript.
+                if character == tilde, hi - lo != openerHi - openerLo, length != 3, openerLength != 3 {
+                    return false
+                }
+                if character == caret || (character == tilde && min(hi - lo, openerHi - openerLo) == 1) {
                     return !isTextWhitespace[openerHi..<lo].contains(true)
                 }
                 // The rule of 3: an asterisk run that can both open and
@@ -214,10 +220,9 @@ public enum InlineMarkdown {
                 let opener = openers[position]
                 guard case .delimiter(_, let openerLo, var openerHi, let openerLength, let openerCanOpen,
                                       let openerCanClose) = tokens[opener] else { break }
-                let used = character != star ? hi - lo : hi - lo >= 2 && openerHi - openerLo >= 2 ? 2 : 1
+                let used = character == caret ? 1 : hi - lo >= 2 && openerHi - openerLo >= 2 ? 2 : 1
                 let style: InlineStyle = switch character {
-                case tilde: .strikethrough
-                case underscore: .subscript
+                case tilde: used == 2 ? .strikethrough : .subscript
                 case caret: .superscript
                 default: used == 2 ? .bold : .italic
                 }
@@ -372,7 +377,7 @@ public enum InlineMarkdown {
             let unit = units[index]
             if unit.isCode {
                 markdown += codeSpan(unit.text)
-            } else if escaping, !unit.isImage, ["*", "~", "`", "_", "^"].contains(unit.text) {
+            } else if escaping, !unit.isImage, ["*", "~", "`", "^"].contains(unit.text) {
                 markdown += "\\" + unit.text
             } else {
                 markdown += unit.text

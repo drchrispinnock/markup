@@ -8,14 +8,14 @@ import Testing
 @MainActor
 @Suite struct EditorTests {
     let document: MarkdownDocument
-    let editor: EditorWindowController
+    let editor: EditorViewController
 
     init() {
         _ = NSApplication.shared
         document = MarkdownDocument()
         document.undoManager?.groupsByEvent = false
         document.makeWindowControllers()
-        editor = document.windowControllers.first as! EditorWindowController
+        editor = document.editor
     }
 
     private var textView: NSTextView { editor.textView }
@@ -149,14 +149,14 @@ import Testing
 @MainActor
 @Suite struct ListEditorTests {
     let document: MarkdownDocument
-    let editor: EditorWindowController
+    let editor: EditorViewController
 
     init() {
         _ = NSApplication.shared
         document = MarkdownDocument()
         document.undoManager?.groupsByEvent = false
         document.makeWindowControllers()
-        editor = document.windowControllers.first as! EditorWindowController
+        editor = document.editor
     }
 
     private var textView: EditorTextView { editor.textView }
@@ -360,14 +360,14 @@ import Testing
 @MainActor
 @Suite struct HeadingShortcutTests {
     let document: MarkdownDocument
-    let editor: EditorWindowController
+    let editor: EditorViewController
 
     init() {
         _ = NSApplication.shared
         document = MarkdownDocument()
         document.undoManager?.groupsByEvent = false
         document.makeWindowControllers()
-        editor = document.windowControllers.first as! EditorWindowController
+        editor = document.editor
     }
 
     private var textView: EditorTextView { editor.textView }
@@ -471,14 +471,14 @@ import Testing
 @MainActor
 @Suite struct ViewModeTests {
     let document: MarkdownDocument
-    let editor: EditorWindowController
+    let editor: EditorViewController
 
     init() {
         _ = NSApplication.shared
         document = MarkdownDocument()
         document.undoManager?.groupsByEvent = false
         document.makeWindowControllers()
-        editor = document.windowControllers.first as! EditorWindowController
+        editor = document.editor
     }
 
     private var textView: EditorTextView { editor.textView }
@@ -564,7 +564,7 @@ import Testing
     }
 
     @Test func viewMenuItemTogglesAndShowsState() {
-        let item = NSMenuItem(title: "Show Markdown", action: #selector(EditorWindowController.toggleMarkdown(_:)), keyEquivalent: "")
+        let item = NSMenuItem(title: "Show Markdown", action: #selector(EditorViewController.toggleMarkdown(_:)), keyEquivalent: "")
         editor.toggleMarkdown(item)
         #expect(editor.isShowingMarkdown)
         #expect(editor.viewModeControl.selectedSegment == 1)
@@ -596,7 +596,7 @@ import Testing
     private func makeEditor() -> EditorTextView {
         let document = MarkdownDocument()
         document.makeWindowControllers()
-        let textView = (document.windowControllers.first as! EditorWindowController).textView
+        let textView = document.editor.textView
         textView.checkingDefaults = defaults
         return textView
     }
@@ -672,17 +672,17 @@ import Testing
 @MainActor
 @Suite struct LineWrappingTests {
     let document: MarkdownDocument
-    let editor: EditorWindowController
+    let editor: EditorViewController
 
     init() {
         _ = NSApplication.shared
         document = MarkdownDocument()
         document.makeWindowControllers()
-        editor = document.windowControllers.first as! EditorWindowController
+        editor = document.editor
     }
 
     private func expectTextFitsWindow() {
-        let window = editor.window!
+        let window = editor.view.window!
         window.layoutIfNeeded()
         let clipView = editor.textView.enclosingScrollView!.contentView
         #expect(editor.textView.frame.width == clipView.bounds.width)
@@ -694,7 +694,7 @@ import Testing
     }
 
     @Test func textViewFollowsTheWindowWhenResized() {
-        let window = editor.window!
+        let window = editor.view.window!
         window.setContentSize(NSSize(width: 520, height: 400))
         expectTextFitsWindow()
         window.setContentSize(NSSize(width: 1100, height: 700))
@@ -706,8 +706,8 @@ import Testing
         editor.load(markdown: "# " + String(repeating: "heading ", count: 40) + "\n"
             + "- " + String(repeating: "item ", count: 80) + "\n"
             + String(repeating: "x", count: 400))
-        editor.window!.setContentSize(NSSize(width: 520, height: 400))
-        editor.window!.layoutIfNeeded()
+        editor.view.window!.setContentSize(NSSize(width: 520, height: 400))
+        editor.view.window!.layoutIfNeeded()
         let textView = editor.textView
         let layoutManager = textView.layoutManager!
         layoutManager.ensureLayout(for: textView.textContainer!)
@@ -721,7 +721,7 @@ import Testing
 @MainActor
 @Suite struct PrintingTests {
     let document: MarkdownDocument
-    let editor: EditorWindowController
+    let editor: EditorViewController
     static let sample = "# Title\n\nSome text.\n\n- one\n  - [x] done\n"
 
     init() throws {
@@ -729,7 +729,7 @@ import Testing
         document = MarkdownDocument()
         try document.read(from: Data(Self.sample.utf8), ofType: "net.daringfireball.markdown")
         document.makeWindowControllers()
-        editor = document.windowControllers.first as! EditorWindowController
+        editor = document.editor
     }
 
     private func printedText() throws -> NSTextStorage {
@@ -837,7 +837,7 @@ import Testing
 @MainActor
 @Suite struct ImageTests {
     let document: MarkdownDocument
-    let editor: EditorWindowController
+    let editor: EditorViewController
     let suiteName = "MarkupTests-\(UUID().uuidString)"
     let imagesDirectory: URL
 
@@ -851,7 +851,7 @@ import Testing
         document = MarkdownDocument()
         document.undoManager?.groupsByEvent = false
         document.makeWindowControllers()
-        editor = document.windowControllers.first as! EditorWindowController
+        editor = document.editor
         editor.settings = Settings(defaults: UserDefaults(suiteName: suiteName)!)
         editor.settings.imagesDirectory = imagesDirectory
     }
@@ -909,18 +909,25 @@ import Testing
         #expect(editor.markdown == markdown)
     }
 
-    @Test func looksInTheDocumentsFolderBeforeTheImagesDirectory() throws {
+    @Test func looksInTheImagesDirectoryThenTheDocumentsFolderThenResourcesThenImages() throws {
         defer { cleanUp() }
         let documentFolder = imagesDirectory.appendingPathComponent("doc")
-        try FileManager.default.createDirectory(at: documentFolder.appendingPathComponent("cats"), withIntermediateDirectories: true)
-        try Self.writePNG(width: 10, height: 10, to: documentFolder.appendingPathComponent("cats/tom.png"))
         document.fileURL = documentFolder.appendingPathComponent("post.md")
-        #expect(editor.imageFolders.map(\.path) == [documentFolder.path, imagesDirectory.path])
-        #expect(MarkdownImage(alt: "", path: "cats/tom.png").fileURL(in: editor.imageFolders)
-            == documentFolder.appendingPathComponent("cats/tom.png"))
-        try FileManager.default.removeItem(at: documentFolder.appendingPathComponent("cats/tom.png"))
-        #expect(MarkdownImage(alt: "", path: "cats/tom.png").fileURL(in: editor.imageFolders)
-            == imagesDirectory.appendingPathComponent("cats/tom.png"))
+        let folders = [imagesDirectory, documentFolder, documentFolder.appendingPathComponent("resources"),
+                       documentFolder.appendingPathComponent("images")]
+        #expect(editor.imageFolders.map(\.path) == folders.map(\.path))
+        for folder in folders.dropFirst() {
+            try FileManager.default.createDirectory(at: folder.appendingPathComponent("cats"), withIntermediateDirectories: true)
+            try Self.writePNG(width: 10, height: 10, to: folder.appendingPathComponent("cats/tom.png"))
+        }
+        // Each folder in turn is used once the ones before it lack the file.
+        for folder in folders {
+            #expect(MarkdownImage(alt: "", path: "cats/tom.png").fileURL(in: editor.imageFolders)?.path
+                == folder.appendingPathComponent("cats/tom.png").path)
+            try FileManager.default.removeItem(at: folder.appendingPathComponent("cats/tom.png"))
+        }
+        #expect(MarkdownImage(alt: "", path: "cats/tom.png").fileURL(in: editor.imageFolders) == nil)
+        try Self.writePNG(width: 10, height: 10, to: imagesDirectory.appendingPathComponent("cats/tom.png"))
         #expect(MarkdownImage(alt: "", path: "cats%2Ftom.png").fileURL(in: editor.imageFolders) != nil)
         #expect(MarkdownImage(alt: "", path: "https://example.com/a.png").fileURL(in: editor.imageFolders) == nil)
     }
@@ -986,11 +993,11 @@ import Testing
     @Test func pathsAreRelativeToTheImagesDirectoryOnly() {
         defer { cleanUp() }
         let file = imagesDirectory.appendingPathComponent("cats/tom.png")
-        #expect(EditorWindowController.path(of: file, relativeTo: imagesDirectory) == "cats/tom.png")
-        #expect(EditorWindowController.path(of: imagesDirectory, relativeTo: imagesDirectory) == nil)
-        #expect(EditorWindowController.path(of: URL(fileURLWithPath: "/etc/hosts"), relativeTo: imagesDirectory) == nil)
+        #expect(EditorViewController.path(of: file, relativeTo: imagesDirectory) == "cats/tom.png")
+        #expect(EditorViewController.path(of: imagesDirectory, relativeTo: imagesDirectory) == nil)
+        #expect(EditorViewController.path(of: URL(fileURLWithPath: "/etc/hosts"), relativeTo: imagesDirectory) == nil)
         let sibling = URL(fileURLWithPath: imagesDirectory.path + "-other/a.png")
-        #expect(EditorWindowController.path(of: sibling, relativeTo: imagesDirectory) == nil)
+        #expect(EditorViewController.path(of: sibling, relativeTo: imagesDirectory) == nil)
     }
 
     @Test func buttonIsOffInTheMarkdownView() {
@@ -1017,14 +1024,14 @@ import Testing
 @MainActor
 @Suite struct EmphasisTests {
     let document: MarkdownDocument
-    let editor: EditorWindowController
+    let editor: EditorViewController
 
     init() {
         _ = NSApplication.shared
         document = MarkdownDocument()
         document.undoManager?.groupsByEvent = false
         document.makeWindowControllers()
-        editor = document.windowControllers.first as! EditorWindowController
+        editor = document.editor
     }
 
     private var textView: EditorTextView { editor.textView }
@@ -1219,7 +1226,7 @@ import Testing
         type("H2O x2")
         select(1, 1)
         step { editor.subscriptButton.performClick(nil) }
-        #expect(editor.markdown == "H_2_O x2")
+        #expect(editor.markdown == "H~2~O x2")
         #expect(editor.subscriptButton.state == .on && editor.superscriptButton.state == .off)
         let offset = storage.attribute(.baselineOffset, at: 1, effectiveRange: nil) as? CGFloat
         #expect(offset.map { $0 < 0 } == true)
@@ -1229,13 +1236,13 @@ import Testing
 
         select(5, 1)
         step { editor.toggleSuperscript(nil) }
-        #expect(editor.markdown == "H_2_O x^2^")
+        #expect(editor.markdown == "H~2~O x^2^")
         #expect((storage.attribute(.baselineOffset, at: 5, effectiveRange: nil) as? CGFloat).map { $0 > 0 } == true)
         // Subscript replaces superscript.
         step { editor.toggleSubscript(nil) }
-        #expect(editor.markdown == "H_2_O x_2_")
+        #expect(editor.markdown == "H~2~O x~2~")
         step { editor.toggleSubscript(nil) }
-        #expect(editor.markdown == "H_2_O x2")
+        #expect(editor.markdown == "H~2~O x2")
         #expect(storage.attribute(.baselineOffset, at: 5, effectiveRange: nil) == nil)
     }
 
@@ -1248,23 +1255,23 @@ import Testing
         #expect(editor.markdown == "x^2^ y")
     }
 
-    @Test func typedUnderscoresAndCaretsBecomeSubscriptAndSuperscript() {
-        type("H_2_O and x^2^ but x^2 + y^2 and my_var name")
+    @Test func typedTildesAndCaretsBecomeSubscriptAndSuperscript() {
+        type("H~2~O and x^2^ but x^2 + y^2 and my_var name")
         #expect(storage.string == "H2O and x2 but x^2 + y^2 and my_var name")
         #expect(storage.inlineStyles(at: 1) == [.subscript])
         #expect(storage.inlineStyles(at: 9) == [.superscript])
-        #expect(editor.markdown == "H_2_O and x^2^ but x^2 + y^2 and my_var name")
+        #expect(editor.markdown == "H~2~O and x^2^ but x^2 + y^2 and my_var name")
     }
 
     @Test func subscriptAndSuperscriptButtonsAreLaidOutAfterCode() {
-        editor.window!.layoutIfNeeded()
+        editor.view.window!.layoutIfNeeded()
         #expect(editor.subscriptButton.frame.minX > editor.codeButton.frame.maxX)
         #expect(editor.superscriptButton.frame.minX > editor.subscriptButton.frame.maxX)
         #expect(editor.imageButton.frame.minX > editor.superscriptButton.frame.maxX + 50)
     }
 
     @Test func headerLayout() {
-        let window = editor.window!
+        let window = editor.view.window!
         window.layoutIfNeeded()
         #expect(editor.boldButton.frame.minX > editor.stylePopUp.frame.maxX)
         #expect(editor.italicButton.frame.minX > editor.boldButton.frame.maxX)
@@ -1279,14 +1286,14 @@ import Testing
 @MainActor
 @Suite struct CodeTests {
     let document: MarkdownDocument
-    let editor: EditorWindowController
+    let editor: EditorViewController
 
     init() {
         _ = NSApplication.shared
         document = MarkdownDocument()
         document.undoManager?.groupsByEvent = false
         document.makeWindowControllers()
-        editor = document.windowControllers.first as! EditorWindowController
+        editor = document.editor
     }
 
     private var textView: EditorTextView { editor.textView }
@@ -1411,7 +1418,7 @@ import Testing
         let reload = menu.items.first { $0.title == "View" }!.submenu!.items.first { $0.title == "Reload Images" }!
         #expect(reload.keyEquivalent == "R")
         #expect(BlockStyle.allCases.map(\.title).contains("Code"))
-        editor.window!.layoutIfNeeded()
+        editor.view.window!.layoutIfNeeded()
         #expect(editor.codeButton.frame.minX > editor.strikethroughButton.frame.maxX)
         #expect(editor.imageButton.frame.minX > editor.codeButton.frame.maxX)
     }
@@ -1435,5 +1442,94 @@ import Testing
         #expect(editor.markdown == "![](pic.png)")
         #expect(document.undoManager?.canUndo == false)
 
+    }
+}
+
+/// Project windows: a folder's Markdown files in a sidebar, one shown at a
+/// time, the others kept open.
+@MainActor
+@Suite struct ProjectTests {
+    let folder: URL
+    let project: ProjectWindowController
+
+    init() throws {
+        _ = NSApplication.shared
+        folder = FileManager.default.temporaryDirectory.appendingPathComponent("MarkupProjectTests-\(UUID().uuidString)")
+            .resolvingSymlinksInPath()
+        let manager = FileManager.default
+        try manager.createDirectory(at: folder.appendingPathComponent("notes"), withIntermediateDirectories: true)
+        try manager.createDirectory(at: folder.appendingPathComponent("Pages.app"), withIntermediateDirectories: true)
+        for (name, text) in [("b.md", "# B"), ("a.md", "A text"), ("notes/c.markdown", "C"), ("notes.txt", "x"),
+                             (".hidden.md", "h")] {
+            try Data(text.utf8).write(to: folder.appendingPathComponent(name))
+        }
+        project = ProjectWindowController(root: folder)
+        _ = project.sidebar.view
+    }
+
+    private func document(_ name: String) throws -> MarkdownDocument {
+        let document = try MarkdownDocument(contentsOf: folder.appendingPathComponent(name),
+                                            ofType: "net.daringfireball.markdown")
+        document.undoManager?.groupsByEvent = false
+        return document
+    }
+
+    @Test func sidebarListsFoldersThenMarkdownFiles() {
+        let names = project.sidebar.rootNode.children.map(\.name)
+        #expect(names == ["notes", "a.md", "b.md"])
+        #expect(project.sidebar.rootNode.children[0].children.map(\.name) == ["c.markdown"])
+    }
+
+    @Test func showsOneFileAtATimeAndKeepsTheOthersEdits() throws {
+        let a = try document("a.md"), b = try document("b.md")
+        project.show(a)
+        #expect(project.window?.title == "a.md")
+        #expect(a.editor.view.superview != nil)
+
+        a.undoManager?.beginUndoGrouping()
+        a.editor.textView.setSelectedRange(NSRange(location: 6, length: 0))
+        a.editor.textView.insertText("!", replacementRange: a.editor.textView.selectedRange())
+        a.undoManager?.endUndoGrouping()
+        #expect(a.isDocumentEdited)
+        #expect(project.window?.isDocumentEdited == true)
+        let sidebar = project.sidebar.outlineView
+        let row = sidebar.row(forItem: project.sidebar.node(for: folder.appendingPathComponent("a.md")))
+        let cell = sidebar.view(atColumn: 0, row: row, makeIfNecessary: true) as? ProjectSidebarController.FileCell
+        #expect(cell?.editedMark.isHidden == false)
+
+        project.show(b)
+        #expect(project.window?.title == "b.md")
+        #expect(project.window?.isDocumentEdited == false)
+        #expect(a.editor.view.superview == nil && b.editor.view.superview != nil)
+        #expect(project.documents.count == 2)
+        #expect(project.sidebar.outlineView.selectedRow == project.sidebar.outlineView.row(forItem:
+            project.sidebar.node(for: folder.appendingPathComponent("b.md"))))
+
+        project.show(a)
+        #expect(a.currentMarkdown == "A text!")
+        #expect(b.currentMarkdown == "# B")
+    }
+
+    @Test func documentActionsGoToTheFileShown() throws {
+        let a = try document("a.md")
+        project.show(a)
+        #expect(project.supplementalTarget(forAction: #selector(NSDocument.save(_:)), sender: nil) as? MarkdownDocument === a)
+        #expect(project.windowWillReturnUndoManager(project.window!) === a.undoManager)
+    }
+
+    @Test func selectingAFileInANestedFolderOpensTheFolder() throws {
+        let c = try document("notes/c.markdown")
+        project.show(c)
+        let node = project.sidebar.node(for: folder.appendingPathComponent("notes/c.markdown"))
+        #expect(project.sidebar.outlineView.row(forItem: node) == project.sidebar.outlineView.selectedRow)
+    }
+
+    @Test func closingWithNoUnsavedChangesClosesTheDocuments() throws {
+        let a = try document("a.md")
+        project.show(a)
+        #expect(project.windowShouldClose(project.window!))
+        project.window?.close()
+        #expect(a.project == nil)
+        #expect(project.documents.isEmpty)
     }
 }

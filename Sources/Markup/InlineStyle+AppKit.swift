@@ -10,7 +10,7 @@ extension NSAttributedString.Key {
     static let inlineStrikethrough = NSAttributedString.Key("MarkupInlineStrikethrough")
     /// True on inline code characters (`` `code` ``).
     static let inlineCode = NSAttributedString.Key("MarkupInlineCode")
-    /// True on subscript characters (`H_2_O`).
+    /// True on subscript characters (`H~2~O`).
     static let inlineSubscript = NSAttributedString.Key("MarkupInlineSubscript")
     /// True on superscript characters (`x^2^`).
     static let inlineSuperscript = NSAttributedString.Key("MarkupInlineSuperscript")

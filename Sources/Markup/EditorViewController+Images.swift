@@ -5,9 +5,9 @@ import UniformTypeIdentifiers
 /// The header's Insert Image button. Images come from the images directory
 /// (Markup > Settings), and are written as `![alt](path)` with the path
 /// relative to that directory.
-extension EditorWindowController {
+extension EditorViewController {
     @objc func insertImage(_ sender: Any?) {
-        guard !isShowingMarkdown, let window else { return }
+        guard !isShowingMarkdown, let window = view.window else { return }
         guard let folder = settings.imagesDirectory else {
             askForImagesDirectory(in: window)
             return
@@ -75,11 +75,11 @@ private final class ImagePanelDelegate: NSObject, NSOpenSavePanelDelegate {
     }
 
     func panel(_ sender: Any, shouldEnable url: URL) -> Bool {
-        EditorWindowController.path(of: url, relativeTo: folder) != nil
+        EditorViewController.path(of: url, relativeTo: folder) != nil
     }
 
     func panel(_ sender: Any, validate url: URL) throws {
-        guard EditorWindowController.path(of: url, relativeTo: folder) != nil else {
+        guard EditorViewController.path(of: url, relativeTo: folder) != nil else {
             throw CocoaError(.fileReadNoPermission, userInfo: [
                 NSLocalizedDescriptionKey: "Choose an image inside your images directory.",
             ])

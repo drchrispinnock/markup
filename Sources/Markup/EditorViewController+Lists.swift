@@ -1,7 +1,7 @@
 import AppKit
 import MarkupCore
 
-extension EditorWindowController {
+extension EditorViewController {
     func removeMarkers(insideLineAt line: NSRange) {
         guard line.length > 1 else { return }
         var strays: [Int] = []

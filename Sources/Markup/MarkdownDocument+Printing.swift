@@ -20,8 +20,7 @@ extension MarkdownDocument {
 
     /// The folders the document's images are looked up in.
     var imageFolders: [URL] {
-        (windowControllers.first as? EditorWindowController)?.imageFolders
-            ?? [fileURL?.deletingLastPathComponent(), Settings.shared.imagesDirectory].compactMap { $0 }
+        editorIfLoaded?.imageFolders ?? Settings.shared.imageFolders(forDocumentAt: fileURL)
     }
 
     /// A text view holding the formatted document, as tall as its text.
@@ -41,7 +40,7 @@ extension MarkdownDocument {
         // `NSColor.textColor` take their value from the view's appearance.
         textView.appearance = NSAppearance(named: .aqua)
 
-        textView.textStorage?.setAttributedString(EditorWindowController.formattedText(fromMarkdown: markdown,
+        textView.textStorage?.setAttributedString(EditorViewController.formattedText(fromMarkdown: markdown,
                                                                                                imageFolders: imageFolders))
         textView.layoutManager?.ensureLayout(for: textView.textContainer!)
         textView.sizeToFit()

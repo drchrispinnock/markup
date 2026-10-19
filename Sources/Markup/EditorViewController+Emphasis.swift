@@ -7,7 +7,7 @@ import MarkupCore
 /// they change what is typed next. Subscript and superscript each take off
 /// the other. Code blocks keep their text as typed, so these don't apply in
 /// them.
-extension EditorWindowController {
+extension EditorViewController {
     @objc func toggleBold(_ sender: Any?) {
         toggle(.bold, actionName: "Bold")
     }
@@ -78,7 +78,7 @@ extension EditorWindowController {
         }
         undoManager?.setActionName(actionName)
         updateForSelection()
-        window?.makeFirstResponder(textView)
+        view.window?.makeFirstResponder(textView)
     }
 
     /// Whether every character of `range` that can be styled has `style`.

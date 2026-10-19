@@ -1,17 +1,16 @@
 import AppKit
 import MarkupCore
 
-extension EditorWindowController {
+extension EditorViewController {
     func load(markdown: String) {
         storage.setAttributedString(Self.formattedText(fromMarkdown: markdown, imageFolders: imageFolders))
         textView.setSelectedRange(NSRange(location: 0, length: 0))
         updateForSelection()
     }
 
-    /// The folders an image's path is looked up in: the document's own
-    /// folder, then the images directory.
+    /// The folders an image's path is looked up in (`Settings.imageFolders`).
     var imageFolders: [URL] {
-        [markdownDocument?.fileURL?.deletingLastPathComponent(), settings.imagesDirectory].compactMap { $0 }
+        settings.imageFolders(forDocumentAt: document?.fileURL)
     }
 
     /// Markdown as the editor shows it: markers turned into styles, list

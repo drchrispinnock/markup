@@ -4,7 +4,7 @@ import MarkupCore
 /// Switching between the formatted text and the raw Markdown. Both views have
 /// one line per Markdown line, and the conversion is lossless, so switching
 /// keeps the caret on the same line, the same distance from its end.
-extension EditorWindowController {
+extension EditorViewController {
     static let markdownAttributes: [NSAttributedString.Key: Any] = [
         .font: NSFont.monospacedSystemFont(ofSize: 14, weight: .regular),
         .foregroundColor: NSColor.textColor,
@@ -45,7 +45,7 @@ extension EditorWindowController {
         }
         moveCaret(to: caret)
         updateForSelection()
-        window?.makeFirstResponder(textView)
+        view.window?.makeFirstResponder(textView)
     }
 
     /// The caret's line number, and its distance from the end of the line.
@@ -80,7 +80,7 @@ extension EditorWindowController {
     }
 }
 
-extension EditorWindowController: NSMenuItemValidation {
+extension EditorViewController: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
         case #selector(toggleMarkdown(_:)):

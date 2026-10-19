@@ -1,0 +1,228 @@
+import AppKit
+
+/// A project window's sidebar: the folder's subfolders and Markdown files, as
+/// an outline. Hidden files and packages are left out. It follows changes
+/// on disk, keeping folders open and the selection where they were.
+@MainActor
+final class ProjectSidebarController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
+    /// A file or folder in the outline. Folders read their contents when
+    /// first asked.
+    final class Node {
+        let url: URL
+        let isFolder: Bool
+        private var loadedChildren: [Node]?
+
+        init(url: URL, isFolder: Bool) {
+            self.url = url
+            self.isFolder = isFolder
+        }
+
+        var name: String { url.lastPathComponent }
+
+        var children: [Node] {
+            if let loadedChildren { return loadedChildren }
+            let children = isFolder ? Self.contents(of: url) : []
+            loadedChildren = children
+            return children
+        }
+
+        /// Folders first, then files, each in Finder's order.
+        private static func contents(of folder: URL) -> [Node] {
+            let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey]
+            let urls = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys,
+                                                                     options: [.skipsHiddenFiles])) ?? []
+            let nodes = urls.compactMap { url -> Node? in
+                let values = try? url.resourceValues(forKeys: Set(keys))
+                if values?.isDirectory == true {
+                    return values?.isPackage == true ? nil : Node(url: url.standardizedFileURL, isFolder: true)
+                }
+                return isMarkdown(url) ? Node(url: url.standardizedFileURL, isFolder: false) : nil
+            }
+            return nodes.sorted { a, b in
+                a.isFolder != b.isFolder ? a.isFolder : a.name.localizedStandardCompare(b.name) == .orderedAscending
+            }
+        }
+
+        static func isMarkdown(_ url: URL) -> Bool {
+            ["md", "markdown"].contains(url.pathExtension.lowercased())
+        }
+    }
+
+    let root: URL
+    let outlineView = NSOutlineView()
+    private(set) var rootNode: Node
+    private var watcher: DirectoryWatcher?
+    /// Files with unsaved changes, marked with a dot.
+    private var editedFiles: Set<URL> = []
+    /// True while the outline's selection is being set to match the window,
+    /// so it isn't taken as the user choosing a file.
+    private var isSelecting = false
+
+    /// Called when the user chooses a file.
+    var onChoose: ((URL) -> Void)?
+
+    init(root: URL) {
+        self.root = root
+        rootNode = Node(url: root, isFolder: true)
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    override func loadView() {
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
+        outlineView.addTableColumn(column)
+        outlineView.outlineTableColumn = column
+        outlineView.headerView = nil
+        outlineView.style = .sourceList
+        outlineView.rowSizeStyle = .default
+        outlineView.dataSource = self
+        outlineView.delegate = self
+        outlineView.autosaveExpandedItems = false
+
+        let scrollView = NSScrollView()
+        scrollView.documentView = outlineView
+        scrollView.hasVerticalScroller = true
+        scrollView.drawsBackground = false
+        view = scrollView
+
+        watcher = DirectoryWatcher(url: root) { [weak self] in self?.reload() }
+    }
+
+    func stopWatching() {
+        watcher = nil
+    }
+
+    /// Reads the folder again, keeping the open folders and the selection.
+    func reload() {
+        let expanded = (0..<outlineView.numberOfRows).compactMap { row -> URL? in
+            guard let node = outlineView.item(atRow: row) as? Node, outlineView.isItemExpanded(node) else { return nil }
+            return node.url
+        }
+        let selected = (outlineView.item(atRow: outlineView.selectedRow) as? Node)?.url
+        rootNode = Node(url: root, isFolder: true)
+        isSelecting = true
+        outlineView.reloadData()
+        for url in expanded {
+            if let node = node(for: url) { outlineView.expandItem(node) }
+        }
+        isSelecting = false
+        select(selected)
+    }
+
+    /// Selects the file at `url`, opening the folders it's in, or clears the
+    /// selection if it isn't in the outline.
+    func select(_ url: URL?) {
+        isSelecting = true
+        defer { isSelecting = false }
+        guard let url, let node = node(for: url.standardizedFileURL) else {
+            outlineView.deselectAll(nil)
+            return
+        }
+        var ancestors: [Node] = []
+        var parent = outlineView.parent(forItem: node) as? Node
+        while let folder = parent {
+            ancestors.insert(folder, at: 0)
+            parent = outlineView.parent(forItem: folder) as? Node
+        }
+        ancestors.forEach { outlineView.expandItem($0) }
+        let row = outlineView.row(forItem: node)
+        if row >= 0 {
+            outlineView.selectRowIndexes([row], byExtendingSelection: false)
+            outlineView.scrollRowToVisible(row)
+        }
+    }
+
+    func reloadEditedMarks(edited: Set<URL>) {
+        editedFiles = Set(edited.map(\.standardizedFileURL))
+        outlineView.reloadData(forRowIndexes: IndexSet(0..<outlineView.numberOfRows), columnIndexes: [0])
+    }
+
+    /// The node for `url`, reading the folders on the way to it.
+    func node(for url: URL) -> Node? {
+        let rootComponents = root.pathComponents
+        let components = url.pathComponents
+        guard components.count > rootComponents.count, Array(components.prefix(rootComponents.count)) == rootComponents
+        else { return nil }
+        var node = rootNode
+        for name in components.dropFirst(rootComponents.count) {
+            guard let child = node.children.first(where: { $0.name == name }) else { return nil }
+            node = child
+        }
+        return node
+    }
+
+    // MARK: - NSOutlineViewDataSource
+
+    func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
+        ((item as? Node) ?? rootNode).children.count
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
+        ((item as? Node) ?? rootNode).children[index]
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
+        (item as? Node)?.isFolder ?? false
+    }
+
+    // MARK: - NSOutlineViewDelegate
+
+    func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
+        guard let node = item as? Node else { return nil }
+        let identifier = NSUserInterfaceItemIdentifier("file")
+        let cell = outlineView.makeView(withIdentifier: identifier, owner: nil) as? FileCell ?? FileCell()
+        cell.identifier = identifier
+        cell.textField?.stringValue = node.name
+        cell.imageView?.image = NSImage(systemSymbolName: node.isFolder ? "folder" : "doc.text",
+                                        accessibilityDescription: nil)
+        cell.editedMark.isHidden = !editedFiles.contains(node.url)
+        return cell
+    }
+
+    func outlineViewSelectionDidChange(_ notification: Notification) {
+        guard !isSelecting, let node = outlineView.item(atRow: outlineView.selectedRow) as? Node, !node.isFolder
+        else { return }
+        onChoose?(node.url)
+    }
+
+    /// A row: icon, name, and a dot if the file has unsaved changes.
+    final class FileCell: NSTableCellView {
+        let editedMark = NSImageView(image: NSImage(systemSymbolName: "circle.fill",
+                                                    accessibilityDescription: "Unsaved changes")!)
+
+        init() {
+            super.init(frame: .zero)
+            let icon = NSImageView()
+            let name = NSTextField(labelWithString: "")
+            name.lineBreakMode = .byTruncatingMiddle
+            editedMark.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 6, weight: .regular)
+            editedMark.contentTintColor = .secondaryLabelColor
+            for view in [icon, name, editedMark] {
+                view.translatesAutoresizingMaskIntoConstraints = false
+                addSubview(view)
+            }
+            name.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            imageView = icon
+            textField = name
+            NSLayoutConstraint.activate([
+                icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
+                icon.centerYAnchor.constraint(equalTo: centerYAnchor),
+                icon.widthAnchor.constraint(equalToConstant: 16),
+                name.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6),
+                name.centerYAnchor.constraint(equalTo: centerYAnchor),
+                editedMark.leadingAnchor.constraint(greaterThanOrEqualTo: name.trailingAnchor, constant: 4),
+                editedMark.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
+                editedMark.centerYAnchor.constraint(equalTo: centerYAnchor),
+            ])
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) is not supported")
+        }
+    }
+}

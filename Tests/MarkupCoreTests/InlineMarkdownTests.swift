@@ -30,7 +30,7 @@ import Testing
         ])
     }
 
-    @Test(arguments: ["~one~", "~~~three~~~", "a ~~ b", "~~open", "x~y"])
+    @Test(arguments: ["~~one~", "~one~~", "~~~~four~~~~", "a ~~ b", "~~open", "x~y"])
     func leavesOtherTildesAsText(text: String) {
         #expect(InlineMarkdown.spans(in: text) == [InlineSpan(text)])
     }
@@ -123,7 +123,7 @@ import Testing
         spans.flatMap { span in
             span.text.map {
                 "\($0)\(span.bold ? "B" : "")\(span.italic ? "I" : "")\(span.strikethrough ? "S" : "")\(span.code ? "C" : "")"
-                    + "\(span.subscript ? "_" : "")\(span.superscript ? "^" : "")"
+                    + "\(span.subscript ? "~" : "")\(span.superscript ? "^" : "")"
             }
         }
     }
@@ -134,8 +134,9 @@ import Testing
     /// the closing and opening asterisks run together.)
     @Test(arguments: [
         ([InlineStyle.bold, .italic, .strikethrough, .code], ["a", "*", "~~", "`"]),
-        ([InlineStyle.subscript, .superscript, .italic, .code], ["a", "_", "^", "`"]),
-        ([InlineStyle.subscript, .superscript, .bold, .strikethrough], ["a", "_", "*", "~~"]),
+        ([InlineStyle.subscript, .superscript, .italic, .code], ["a", "~", "^", "`"]),
+        ([InlineStyle.subscript, .superscript, .bold, .strikethrough], ["a", "~", "*", "~~"]),
+        ([InlineStyle.subscript, .strikethrough, .italic, .superscript], ["a", "~", "~~", "~~~"]),
     ])
     func roundTripsAnyMixOfEmphasisBetweenWords(styleList: [InlineStyle], words: [String]) {
         func styles(_ bits: Int) -> Set<InlineStyle> {
@@ -167,27 +168,31 @@ import Testing
     }
 
     @Test func readsSubscriptAndSuperscript() {
-        #expect(InlineMarkdown.spans(in: "H_2_O and x^2^") == [
+        #expect(InlineMarkdown.spans(in: "H~2~O and x^2^") == [
             InlineSpan("H"), InlineSpan("2", subscript: true), InlineSpan("O and x"), InlineSpan("2", superscript: true),
         ])
-        #expect(InlineMarkdown.spans(in: "**x_i_**") == [InlineSpan("x", bold: true), InlineSpan("i", bold: true, subscript: true)])
+        #expect(InlineMarkdown.spans(in: "**x~i~**") == [InlineSpan("x", bold: true), InlineSpan("i", bold: true, subscript: true)])
     }
 
     @Test func subscriptAndSuperscriptDontSpanWhitespace() {
-        for text in ["x^2 + y^2", "snake_case and other_name", "a _b c_ d", "__init__", "2^^3^^"] {
+        for text in ["x^2 + y^2", "a ~ b ~ c", "a ~b c~ d", "~~~~x~~~~", "2^^3^^", "H_2_O", "~~a b~"] {
             #expect(InlineMarkdown.spans(in: text) == [InlineSpan(text)], "\(text)")
         }
-        #expect(InlineMarkdown.spans(in: "x_`a b`_") == [InlineSpan("x"), InlineSpan("a b", code: true, subscript: true)])
-        #expect(InlineMarkdown.spans(in: "my_var_name") == [InlineSpan("my"), InlineSpan("var", subscript: true),
-                                                             InlineSpan("name")])
+        #expect(InlineMarkdown.spans(in: "x~`a b`~") == [InlineSpan("x"), InlineSpan("a b", code: true, subscript: true)])
+        #expect(InlineMarkdown.spans(in: "~~a b~~") == [InlineSpan("a b", strikethrough: true)])
+        #expect(InlineMarkdown.spans(in: "~~~x~~~") == [InlineSpan("x", strikethrough: true, subscript: true)])
+        #expect(InlineMarkdown.spans(in: "~~a ~b~~~") == [InlineSpan("a ", strikethrough: true),
+                                                          InlineSpan("b", strikethrough: true, subscript: true)])
+        #expect(InlineMarkdown.spans(in: "~x~~~y~~") == [InlineSpan("x", subscript: true), InlineSpan("y", strikethrough: true)])
     }
 
     @Test func writesSubscriptAndSuperscript() {
-        #expect(InlineMarkdown.markdown(for: [InlineSpan("H"), InlineSpan("2", subscript: true), InlineSpan("O")]) == "H_2_O")
+        #expect(InlineMarkdown.markdown(for: [InlineSpan("H"), InlineSpan("2", subscript: true), InlineSpan("O")]) == "H~2~O")
         #expect(InlineMarkdown.markdown(for: [InlineSpan("e"), InlineSpan("i pi", superscript: true)]) == "e^i^ ^pi^")
         #expect(InlineMarkdown.markdown(for: [InlineSpan("x", bold: true), InlineSpan("2", bold: true, superscript: true)])
             == "**x^2^**")
-        #expect(InlineMarkdown.markdown(for: [InlineSpan("my_var_name")]) == #"my\_var\_name"#)
+        #expect(InlineMarkdown.markdown(for: [InlineSpan("my_var_name")]) == "my_var_name")
+        #expect(InlineMarkdown.markdown(for: [InlineSpan("~x~")]) == #"\~x\~"#)
         #expect(InlineMarkdown.markdown(for: [InlineSpan("x^2 + y^2")]) == "x^2 + y^2")
     }
 

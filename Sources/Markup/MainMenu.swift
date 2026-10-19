@@ -26,6 +26,7 @@ enum MainMenu {
         let fileMenu = NSMenu(title: "File")
         fileMenu.addItem(withTitle: "New", action: #selector(NSDocumentController.newDocument(_:)), keyEquivalent: "n")
         fileMenu.addItem(withTitle: "Open…", action: #selector(NSDocumentController.openDocument(_:)), keyEquivalent: "o")
+        fileMenu.addItem(withTitle: "Open Project…", action: #selector(AppDelegate.openProject(_:)), keyEquivalent: "O")
         fileMenu.addItem(.separator())
         fileMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         fileMenu.addItem(withTitle: "Save", action: #selector(NSDocument.save(_:)), keyEquivalent: "s")
@@ -48,22 +49,27 @@ enum MainMenu {
         mainMenu.addItem(submenu: editMenu, title: "Edit")
 
         let formatMenu = NSMenu(title: "Format")
-        formatMenu.addItem(withTitle: "Bold", action: #selector(EditorWindowController.toggleBold(_:)), keyEquivalent: "b")
-        formatMenu.addItem(withTitle: "Italic", action: #selector(EditorWindowController.toggleItalic(_:)), keyEquivalent: "i")
+        formatMenu.addItem(withTitle: "Bold", action: #selector(EditorViewController.toggleBold(_:)), keyEquivalent: "b")
+        formatMenu.addItem(withTitle: "Italic", action: #selector(EditorViewController.toggleItalic(_:)), keyEquivalent: "i")
         formatMenu.addItem(withTitle: "Strikethrough",
-                           action: #selector(EditorWindowController.toggleStrikethrough(_:)), keyEquivalent: "X")
-        formatMenu.addItem(withTitle: "Code", action: #selector(EditorWindowController.toggleCode(_:)), keyEquivalent: "e")
-        formatMenu.addItem(withTitle: "Subscript", action: #selector(EditorWindowController.toggleSubscript(_:)),
+                           action: #selector(EditorViewController.toggleStrikethrough(_:)), keyEquivalent: "X")
+        formatMenu.addItem(withTitle: "Code", action: #selector(EditorViewController.toggleCode(_:)), keyEquivalent: "e")
+        formatMenu.addItem(withTitle: "Subscript", action: #selector(EditorViewController.toggleSubscript(_:)),
                            keyEquivalent: "-").keyEquivalentModifierMask = [.command, .control]
-        formatMenu.addItem(withTitle: "Superscript", action: #selector(EditorWindowController.toggleSuperscript(_:)),
+        formatMenu.addItem(withTitle: "Superscript", action: #selector(EditorViewController.toggleSuperscript(_:)),
                            keyEquivalent: "=").keyEquivalentModifierMask = [.command, .control]
         mainMenu.addItem(submenu: formatMenu, title: "Format")
 
         let viewMenu = NSMenu(title: "View")
+        // NSSplitViewController handles this in project windows, and retitles
+        // it Show Sidebar or Hide Sidebar.
+        viewMenu.addItem(withTitle: "Hide Sidebar", action: #selector(NSSplitViewController.toggleSidebar(_:)),
+                         keyEquivalent: "s").keyEquivalentModifierMask = [.command, .control]
+        viewMenu.addItem(.separator())
         viewMenu.addItem(withTitle: "Show Markdown",
-                         action: #selector(EditorWindowController.toggleMarkdown(_:)), keyEquivalent: "M")
+                         action: #selector(EditorViewController.toggleMarkdown(_:)), keyEquivalent: "M")
         viewMenu.addItem(withTitle: "Reload Images",
-                         action: #selector(EditorWindowController.reloadImages(_:)), keyEquivalent: "R")
+                         action: #selector(EditorViewController.reloadImages(_:)), keyEquivalent: "R")
         mainMenu.addItem(submenu: viewMenu, title: "View")
 
         let windowMenu = NSMenu(title: "Window")

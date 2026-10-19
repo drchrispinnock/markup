@@ -1,7 +1,7 @@
 import AppKit
 import MarkupCore
 
-extension EditorWindowController {
+extension EditorViewController {
     /// Gives every line the selection touches the chosen style. List lines
     /// stop being list items.
     @objc func styleChosen(_ sender: NSPopUpButton) {
@@ -42,7 +42,7 @@ extension EditorWindowController {
             emptyLineFence = nil
         }
         updateForSelection()
-        window?.makeFirstResponder(textView)
+        view.window?.makeFirstResponder(textView)
     }
 
     /// The style of the line containing the caret. An empty last line has no

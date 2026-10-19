@@ -2,7 +2,7 @@ import AppKit
 import MarkupCore
 
 /// Code blocks: lines in the Code style, saved between ``` fences.
-extension EditorWindowController {
+extension EditorViewController {
     /// Return in a code block. On a line holding just a fence ("```", or
     /// "```swift") it turns the line into an empty code line instead. On an
     /// empty last line of a block it ends the block, making the line a
