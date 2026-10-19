@@ -102,6 +102,7 @@ extension EditorWindowController {
         let changed = ListItem(level: level, marker: item.marker)
         changeAttributes(in: line) {
             storage.addAttributes(changed.lineAttributes, range: line)
+            storage.applyInlineStyles(in: line)
             // Bullets are drawn differently at each level.
             storage.addAttribute(.attachment, value: changed.attachment, range: NSRange(location: line.location, length: 1))
         }

@@ -47,6 +47,13 @@ enum MainMenu {
         editMenu.addItem(submenu: spellingMenu(), title: "Spelling and Grammar")
         mainMenu.addItem(submenu: editMenu, title: "Edit")
 
+        let formatMenu = NSMenu(title: "Format")
+        formatMenu.addItem(withTitle: "Bold", action: #selector(EditorWindowController.toggleBold(_:)), keyEquivalent: "b")
+        formatMenu.addItem(withTitle: "Italic", action: #selector(EditorWindowController.toggleItalic(_:)), keyEquivalent: "i")
+        formatMenu.addItem(withTitle: "Strikethrough",
+                           action: #selector(EditorWindowController.toggleStrikethrough(_:)), keyEquivalent: "X")
+        mainMenu.addItem(submenu: formatMenu, title: "Format")
+
         let viewMenu = NSMenu(title: "View")
         viewMenu.addItem(withTitle: "Show Markdown",
                          action: #selector(EditorWindowController.toggleMarkdown(_:)), keyEquivalent: "M")

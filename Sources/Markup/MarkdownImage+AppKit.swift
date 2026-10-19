@@ -38,8 +38,8 @@ extension MarkdownImage {
     }
 }
 
-/// Draws an image at its own size, shrunk to fit the width of the text, or a
-/// placeholder naming the path if the image can't be found.
+/// Draws an image at its actual size, or a placeholder naming the path if
+/// the image can't be found.
 final class ImageAttachmentCell: NSTextAttachmentCell {
     let picture: NSImage?
     let path: String
@@ -79,7 +79,13 @@ final class ImageAttachmentCell: NSTextAttachmentCell {
 
     override func cellFrame(for textContainer: NSTextContainer, proposedLineFragment lineFrag: NSRect,
                             glyphPosition position: NSPoint, characterIndex charIndex: Int) -> NSRect {
-        MainActor.assumeIsolated { NSRect(origin: .zero, size: size(fittingWidth: max(lineFrag.width - 2, 16))) }
+        MainActor.assumeIsolated {
+            // For now, images show at their actual size even when that is
+            // wider than the text. Fitting them to `lineFrag` as the
+            // placeholder is would shrink them to the text width.
+            let maxWidth = picture == nil ? max(lineFrag.width - 2, 16) : .greatestFiniteMagnitude
+            return NSRect(origin: .zero, size: size(fittingWidth: maxWidth))
+        }
     }
 
     // An image sits on the baseline. The placeholder is centred on the

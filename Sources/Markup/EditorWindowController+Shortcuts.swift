@@ -7,6 +7,8 @@ extension EditorWindowController {
     /// - "# ", "## " and "### " make the line a heading of that level.
     /// - "- " makes a paragraph a bullet, and "[ ] " or "[x] " at the start of
     ///   a bullet makes it a checkbox.
+    /// - "*italic*", "**bold**", "***both***" and "~~strikethrough~~"
+    ///   anywhere in a line become styled text.
     /// - "![alt](path)" anywhere in a line becomes the image.
     ///
     /// Only edits to the syntax itself trigger this, so an undone conversion
@@ -30,6 +32,7 @@ extension EditorWindowController {
             } else if !convertHeadingPrefix(of: line, after: edit) {
                 convertListPrefix(of: line, after: edit)
             }
+            convertEmphasis(in: lineRange(at: location), after: edit)
             convertImages(in: lineRange(at: location), after: edit)
             location = NSMaxRange(lineRange(at: location))
         }
@@ -54,6 +57,7 @@ extension EditorWindowController {
         if heading.length > 0 {
             changeAttributes(in: heading) {
                 storage.addAttributes(prefix.style.attributes, range: heading)
+                storage.applyInlineStyles(in: heading)
             }
         }
         let afterPrefix = line.location + prefix.length
@@ -87,5 +91,47 @@ extension EditorWindowController {
                 : selection.location
             textView.setSelectedRange(NSRange(location: caret, length: 0))
         }
+    }
+
+    /// Replaces typed or pasted inline styles that the edit touched, or that
+    /// the edit was typed just after, with styled text. A just-typed closing
+    /// asterisk or tilde waits for the next character: an asterisk may be
+    /// the first of two, and the next character shouldn't take the style.
+    private func convertEmphasis(in line: NSRange, after edit: NSRange) {
+        let contents = contentsRange(of: line)
+        let string = storage.string as NSString
+        let typedDelimiter = edit.length == 1 && NSMaxRange(edit) <= string.length
+            && [UInt16(UInt8(ascii: "*")), UInt16(UInt8(ascii: "~"))].contains(string.character(at: edit.location))
+        let found = InlineMarkdown.emphases(in: string.substring(with: contents)).map { emphasis in
+            (opening: NSRange(location: contents.location + emphasis.opening.lowerBound, length: emphasis.opening.count),
+             closing: NSRange(location: contents.location + emphasis.closing.lowerBound, length: emphasis.closing.count),
+             style: emphasis.style)
+        }
+        let chosen = found.filter { emphasis in
+            let whole = NSUnionRange(emphasis.opening, emphasis.closing)
+            let touched = edit.length > 0
+                ? NSIntersectionRange(whole, edit).length > 0 || edit.location == NSMaxRange(whole)
+                : whole.location < edit.location && edit.location <= NSMaxRange(whole)
+            return touched && !(typedDelimiter && NSMaxRange(edit) == NSMaxRange(emphasis.closing))
+        }
+        guard !chosen.isEmpty else { return }
+
+        let selection = textView.selectedRange()
+        changeAttributes(in: contents) {
+            for emphasis in chosen {
+                let inner = NSRange(location: NSMaxRange(emphasis.opening),
+                                    length: emphasis.closing.location - NSMaxRange(emphasis.opening))
+                storage.addAttribute(emphasis.style.key, value: true, range: inner)
+            }
+            storage.applyInlineStyles(in: contents)
+        }
+        let asterisks = chosen.flatMap { [$0.opening, $0.closing] }.sorted { $0.location > $1.location }
+        for range in asterisks {
+            replaceCharacters(in: range, with: NSAttributedString())
+        }
+        let removedBeforeCaret = asterisks.reduce(0) { removed, range in
+            removed + max(0, min(NSMaxRange(range), selection.location) - range.location)
+        }
+        textView.setSelectedRange(NSRange(location: selection.location - removedBeforeCaret, length: 0))
     }
 }

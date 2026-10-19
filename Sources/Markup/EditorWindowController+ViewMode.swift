@@ -40,6 +40,9 @@ extension EditorWindowController {
         viewModeControl.selectedSegment = showMarkdown ? 1 : 0
         stylePopUp.isEnabled = !showMarkdown
         imageButton.isEnabled = !showMarkdown
+        for style in InlineStyle.allCases {
+            button(for: style).isEnabled = !showMarkdown
+        }
         moveCaret(to: caret)
         updateForSelection()
         window?.makeFirstResponder(textView)
@@ -79,8 +82,20 @@ extension EditorWindowController {
 
 extension EditorWindowController: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        if menuItem.action == #selector(toggleMarkdown(_:)) {
+        switch menuItem.action {
+        case #selector(toggleMarkdown(_:)):
             menuItem.state = isShowingMarkdown ? .on : .off
+        case #selector(toggleBold(_:)):
+            menuItem.state = boldButton.state
+            return !isShowingMarkdown
+        case #selector(toggleItalic(_:)):
+            menuItem.state = italicButton.state
+            return !isShowingMarkdown
+        case #selector(toggleStrikethrough(_:)):
+            menuItem.state = strikethroughButton.state
+            return !isShowingMarkdown
+        default:
+            break
         }
         return true
     }

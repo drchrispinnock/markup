@@ -18,6 +18,7 @@ extension EditorWindowController {
         if lines.length > 0 {
             changeAttributes(in: lines) {
                 storage.addAttributes(style.attributes, range: lines)
+                storage.applyInlineStyles(in: lines)
             }
             undoManager?.setActionName("Change Style")
         }
@@ -53,11 +54,13 @@ extension EditorWindowController {
             textView.typingAttributes = Self.markdownAttributes
             return
         }
+        defer { updateInlineStyleButtons() }
+        let inlineStyles = inlineStylesAtCaret()
         let caret = textView.selectedRange().location
         let line = lineRange(at: caret)
         if let item = listItem(at: line) {
             emptyLineStyle = nil
-            textView.typingAttributes = item.lineAttributes
+            textView.typingAttributes = item.lineAttributes.withInlineStyles(inlineStyles)
             stylePopUp.selectItem(withTag: BlockStyle.paragraph.rawValue)
             return
         }
@@ -71,7 +74,7 @@ extension EditorWindowController {
             style = .paragraph
             emptyLineStyle = nil
         }
-        textView.typingAttributes = style.attributes
+        textView.typingAttributes = style.attributes.withInlineStyles(inlineStyles)
         stylePopUp.selectItem(withTag: style.rawValue)
     }
 
@@ -88,6 +91,7 @@ extension EditorWindowController {
         if newLine.length > 0 {
             changeAttributes(in: newLine) {
                 storage.addAttributes(BlockStyle.paragraph.attributes, range: newLine)
+                storage.applyInlineStyles(in: newLine)
             }
         }
         updateForSelection()

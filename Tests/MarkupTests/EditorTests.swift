@@ -925,14 +925,18 @@ import Testing
         #expect(MarkdownImage(alt: "", path: "https://example.com/a.png").fileURL(in: editor.imageFolders) == nil)
     }
 
-    @Test func largeImagesShrinkToTheTextWidth() throws {
+    @Test func imagesShowAtTheirActualSize() throws {
         defer { cleanUp() }
-        editor.load(markdown: "![](cats/tom.png)")
+        editor.load(markdown: "![](cats/tom.png) ![](missing.png)")
+        let line = NSRect(x: 0, y: 0, width: 502, height: 20)
         let image = try #require(cell(at: 0))
         #expect(image.cellSize() == NSSize(width: 2000, height: 1000))
-        let frame = image.cellFrame(for: textView.textContainer!, proposedLineFragment: NSRect(x: 0, y: 0, width: 502, height: 20),
-                                    glyphPosition: .zero, characterIndex: 0)
-        #expect(frame.size == NSSize(width: 500, height: 250))
+        #expect(image.cellFrame(for: textView.textContainer!, proposedLineFragment: line,
+                                glyphPosition: .zero, characterIndex: 0).size == NSSize(width: 2000, height: 1000))
+        // The placeholder still fits the text.
+        let placeholder = try #require(cell(at: 2))
+        #expect(placeholder.cellFrame(for: textView.textContainer!, proposedLineFragment: line,
+                                      glyphPosition: .zero, characterIndex: 2).width <= 500)
     }
 
     @Test func typedImageMarkdownBecomesTheImage() {
@@ -1005,6 +1009,220 @@ import Testing
         let text = try #require((operation.view as? NSTextView)?.textStorage)
         let attachment = text.attribute(.attachment, at: 7, effectiveRange: nil) as? NSTextAttachment
         #expect((attachment?.attachmentCell as? ImageAttachmentCell)?.picture != nil)
+
+    }
+}
+
+/// Bold and italic text: the B and I buttons, Format menu and typed asterisks.
+@MainActor
+@Suite struct EmphasisTests {
+    let document: MarkdownDocument
+    let editor: EditorWindowController
+
+    init() {
+        _ = NSApplication.shared
+        document = MarkdownDocument()
+        document.undoManager?.groupsByEvent = false
+        document.makeWindowControllers()
+        editor = document.windowControllers.first as! EditorWindowController
+    }
+
+    private var textView: EditorTextView { editor.textView }
+    private var storage: NSTextStorage { editor.storage }
+
+    private func step(_ action: () -> Void) {
+        document.undoManager?.beginUndoGrouping()
+        action()
+        document.undoManager?.endUndoGrouping()
+    }
+
+    private func type(_ text: String) {
+        for character in text {
+            step { textView.insertText(String(character), replacementRange: textView.selectedRange()) }
+        }
+    }
+
+    private func select(_ location: Int, _ length: Int = 0) {
+        step { textView.setSelectedRange(NSRange(location: location, length: length)) }
+    }
+
+    private func traits(at index: Int) -> NSFontDescriptor.SymbolicTraits {
+        (storage.attribute(.font, at: index, effectiveRange: nil) as! NSFont).fontDescriptor.symbolicTraits
+    }
+
+    @Test func showsAndSavesBoldAndItalic() {
+        let markdown = "a **b** *c* ***d***\n# T **e**\n- *f*"
+        editor.load(markdown: markdown)
+        #expect(storage.string == "a b c d\nT e\n\u{FFFC}f")
+        #expect(storage.isBold(at: 2) && !storage.isItalic(at: 2) && traits(at: 2).contains(.bold))
+        #expect(storage.isItalic(at: 4) && !storage.isBold(at: 4) && traits(at: 4).contains(.italic))
+        #expect(storage.isBold(at: 6) && storage.isItalic(at: 6) && traits(at: 6).isSuperset(of: [.bold, .italic]))
+        #expect(!storage.isBold(at: 3) && !traits(at: 3).contains(.bold))
+        #expect(storage.isBold(at: 10) && storage.blockStyle(at: 10) == .heading)
+        #expect(storage.isItalic(at: 13) && traits(at: 13).contains(.italic))
+        #expect(editor.markdown == markdown)
+    }
+
+    @Test func boldButtonTogglesTheSelection() {
+        type("one two")
+        select(4, 3)
+        step { editor.boldButton.performClick(nil) }
+        #expect(editor.markdown == "one **two**")
+        #expect(editor.boldButton.state == .on)
+        step { editor.boldButton.performClick(nil) }
+        #expect(editor.markdown == "one two")
+        #expect(editor.boldButton.state == .off)
+    }
+
+    @Test func mixedSelectionBecomesAllBoldThenPlain() {
+        editor.load(markdown: "**one** two")
+        select(0, 7)
+        #expect(editor.boldButton.state == .off)
+        step { editor.toggleBold(nil) }
+        #expect(editor.markdown == "**one two**")
+        step { editor.toggleBold(nil) }
+        #expect(editor.markdown == "one two")
+    }
+
+    @Test func boldAndItalicCombine() {
+        type("word")
+        select(0, 4)
+        step { editor.toggleBold(nil) }
+        step { editor.toggleItalic(nil) }
+        #expect(editor.markdown == "***word***")
+        #expect(editor.italicButton.state == .on && editor.boldButton.state == .on)
+    }
+
+    @Test func undoPutsTheStyleBack() {
+        type("word")
+        select(0, 4)
+        step { editor.toggleItalic(nil) }
+        document.undoManager?.undo()
+        #expect(editor.markdown == "word")
+        document.undoManager?.redo()
+        #expect(editor.markdown == "*word*")
+    }
+
+    @Test func buttonWithNoSelectionChangesWhatIsTypedNext() {
+        type("a ")
+        step { editor.toggleBold(nil) }
+        #expect(editor.boldButton.state == .on)
+        type("bold")
+        step { editor.toggleBold(nil) }
+        type(" c")
+        #expect(editor.markdown == "a **bold** c")
+    }
+
+    @Test func typingContinuesTheStyleBeforeTheCaret() {
+        editor.load(markdown: "**ab** c")
+        select(2)
+        type("x")
+        select(4)
+        type("y")
+        #expect(editor.markdown == "**abx** yc")
+    }
+
+    @Test func typedAsterisksBecomeEmphasis() {
+        type("an *it* and **bo** and ***bi*** x")
+        #expect(storage.string == "an it and bo and bi x")
+        #expect(editor.markdown == "an *it* and **bo** and ***bi*** x")
+        #expect(textView.selectedRange().location == storage.length)
+    }
+
+    /// The closing asterisk waits for the next character, so typing "**"
+    /// closes bold rather than italic.
+    @Test func closingAsteriskWaitsForTheNextCharacter() {
+        type("**b*")
+        #expect(storage.string == "**b*")
+        type("*")
+        #expect(storage.string == "**b**")
+        type(".")
+        #expect(storage.string == "b.")
+        #expect(storage.isBold(at: 0))
+    }
+
+    @Test func pastedEmphasisIsConverted() {
+        step { textView.insertText("x **y** *z*", replacementRange: textView.selectedRange()) }
+        #expect(storage.string == "x y z")
+        #expect(editor.markdown == "x **y** *z*")
+    }
+
+    @Test func literalAsterisksStayText() {
+        type("2 * 3 * 4 and a*")
+        #expect(storage.string == "2 * 3 * 4 and a*")
+        #expect(editor.markdown == "2 * 3 * 4 and a*")
+    }
+
+    @Test func styleChangesKeepEmphasis() {
+        editor.load(markdown: "a **b** *c*")
+        select(0)
+        editor.stylePopUp.selectItem(withTag: BlockStyle.heading.rawValue)
+        step { editor.styleChosen(editor.stylePopUp) }
+        #expect(editor.markdown == "# a **b** *c*")
+        #expect(traits(at: 2).contains(.bold) && traits(at: 4).contains(.italic))
+        #expect((storage.attribute(.font, at: 4, effectiveRange: nil) as! NSFont).pointSize == BlockStyle.heading.font.pointSize)
+    }
+
+    @Test func joiningLinesKeepsEmphasis() {
+        editor.load(markdown: "# Head\n*it*")
+        select(4)
+        step { textView.deleteForward(nil) }
+        #expect(editor.markdown == "# Head*it*")
+        #expect(traits(at: 4).contains(.italic))
+        #expect((storage.attribute(.font, at: 4, effectiveRange: nil) as! NSFont).pointSize == BlockStyle.heading.font.pointSize)
+    }
+
+    @Test func copiesEmphasisAsMarkdown() {
+        editor.load(markdown: "a **b**\n- *c*")
+        #expect(editor.plainText(for: NSRange(location: 2, length: storage.length - 2)) == "**b**\n- *c*")
+    }
+
+    @Test func buttonsAndMenuAreOffInTheMarkdownView() {
+        let format = MainMenu.make().items.first { $0.title == "Format" }!.submenu!
+        let bold = format.items[0], italic = format.items[1], strike = format.items[2]
+        #expect(bold.keyEquivalent == "b" && italic.keyEquivalent == "i" && strike.keyEquivalent == "X")
+        #expect(editor.validateMenuItem(bold) && editor.validateMenuItem(strike))
+        editor.setShowingMarkdown(true)
+        #expect(!editor.boldButton.isEnabled && !editor.italicButton.isEnabled && !editor.strikethroughButton.isEnabled)
+        #expect(!editor.validateMenuItem(bold) && !editor.validateMenuItem(italic) && !editor.validateMenuItem(strike))
+    }
+
+    @Test func showsAndSavesStrikethrough() {
+        let markdown = "a ~~b~~ c ~~**d**~~"
+        editor.load(markdown: markdown)
+        #expect(storage.string == "a b c d")
+        #expect(storage.inlineStyles(at: 2) == [.strikethrough])
+        #expect(storage.attribute(.strikethroughStyle, at: 2, effectiveRange: nil) as? Int == NSUnderlineStyle.single.rawValue)
+        #expect(storage.attribute(.strikethroughStyle, at: 3, effectiveRange: nil) == nil)
+        #expect(storage.inlineStyles(at: 6) == [.bold, .strikethrough])
+        #expect(editor.markdown == markdown)
+    }
+
+    @Test func strikethroughButtonTogglesTheSelection() {
+        type("one two")
+        select(0, 3)
+        step { editor.strikethroughButton.performClick(nil) }
+        #expect(editor.markdown == "~~one~~ two")
+        #expect(editor.strikethroughButton.state == .on)
+        step { editor.toggleStrikethrough(nil) }
+        #expect(editor.markdown == "one two")
+        #expect(storage.attribute(.strikethroughStyle, at: 0, effectiveRange: nil) == nil)
+    }
+
+    @Test func typedTildesBecomeStrikethrough() {
+        type("a ~~gone~~ b and x ~ y")
+        #expect(storage.string == "a gone b and x ~ y")
+        #expect(editor.markdown == "a ~~gone~~ b and x ~ y")
+    }
+
+    @Test func headerLayout() {
+        let window = editor.window!
+        window.layoutIfNeeded()
+        #expect(editor.boldButton.frame.minX > editor.stylePopUp.frame.maxX)
+        #expect(editor.italicButton.frame.minX > editor.boldButton.frame.maxX)
+        #expect(editor.imageButton.frame.maxX < editor.viewModeControl.frame.minX)
+        #expect(editor.strikethroughButton.frame.minX > editor.italicButton.frame.maxX)
+        #expect(editor.imageButton.frame.minX > editor.strikethroughButton.frame.maxX + 100)
 
     }
 }

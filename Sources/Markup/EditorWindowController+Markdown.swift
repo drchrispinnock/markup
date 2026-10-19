@@ -31,15 +31,25 @@ extension EditorWindowController {
         return text
     }
 
-    /// `text` with its images shown.
+    /// One line's text (and newline, if any), with its emphasis and images
+    /// shown.
     private static func inlineText(_ text: String, attributes: [NSAttributedString.Key: Any],
                                    imageFolders: [URL]) -> NSAttributedString {
-        let result = NSMutableAttributedString(string: text, attributes: attributes)
-        for match in MarkdownImage.images(in: text).reversed() {
-            let range = NSRange(location: match.range.lowerBound, length: match.range.count)
-            let markdown = (text as NSString).substring(with: range)
-            result.replaceCharacters(in: range, with: match.image.attachmentString(
-                markdown: markdown, attributes: attributes, folders: imageFolders))
+        let hasNewline = text.hasSuffix("\n")
+        let result = NSMutableAttributedString()
+        for span in InlineMarkdown.spans(in: hasNewline ? String(text.dropLast()) : text) {
+            let spanText = NSMutableAttributedString(
+                string: span.text, attributes: attributes.withInlineStyles(span.styles))
+            for match in MarkdownImage.images(in: span.text).reversed() {
+                let range = NSRange(location: match.range.lowerBound, length: match.range.count)
+                spanText.replaceCharacters(in: range, with: match.image.attachmentString(
+                    markdown: (span.text as NSString).substring(with: range),
+                    attributes: spanText.attributes(at: range.location, effectiveRange: nil), folders: imageFolders))
+            }
+            result.append(spanText)
+        }
+        if hasNewline {
+            result.append(NSAttributedString(string: "\n", attributes: attributes))
         }
         return result
     }
@@ -53,11 +63,11 @@ extension EditorWindowController {
             let line = lineRange(at: location)
             let contents = contentsRange(of: line)
             if let item = listItem(at: line) {
-                let text = markdownText(in: NSRange(location: contents.location + 1, length: contents.length - 1))
+                let text = inlineMarkdown(in: NSRange(location: contents.location + 1, length: contents.length - 1))
                 lines.append(Line(style: .paragraph, text: text, list: item))
             } else {
                 let style = line.length > 0 ? storage.blockStyle(at: line.location) : .paragraph
-                lines.append(Line(style: style, text: markdownText(in: contents)))
+                lines.append(Line(style: style, text: inlineMarkdown(in: contents)))
             }
             location = NSMaxRange(line)
         } while location < string.length
@@ -79,13 +89,39 @@ extension EditorWindowController {
         return text
     }
 
-    /// The text of `range` for the pasteboard, with each list marker and image
-    /// written as its Markdown, so pasting the text back recreates them.
+    /// The Markdown for `range`, which is within one line: inline styles as
+    /// their delimiters, images as written.
+    private func inlineMarkdown(in range: NSRange) -> String {
+        var spans: [InlineSpan] = []
+        storage.enumerateAttributes(in: range) { attributes, run, _ in
+            let styles = Set(InlineStyle.allCases.filter { attributes[$0.key] != nil })
+            let text = markdownText(in: run)
+            if let last = spans.last, last.styles == styles {
+                spans[spans.count - 1].text += text
+            } else {
+                spans.append(InlineSpan(text, styles: styles))
+            }
+        }
+        return InlineMarkdown.markdown(for: spans)
+    }
+
+    /// The text of `range` for the pasteboard, with each list marker, image
+    /// and inline style written as its Markdown, so pasting the text back
+    /// recreates them.
     func plainText(for range: NSRange) -> String {
         var text = ""
         storage.enumerateAttribute(.listMarker, in: range) { value, run, _ in
             guard let raw = value as? Int, let marker = ListMarker(rawValue: raw) else {
-                text += markdownText(in: run)
+                // Inline styles are written line by line.
+                let string = storage.string as NSString
+                var location = run.location
+                while location < NSMaxRange(run) {
+                    let newline = string.range(of: "\n", range: NSRange(location: location, length: NSMaxRange(run) - location))
+                    let end = newline.location == NSNotFound ? NSMaxRange(run) : newline.location
+                    text += inlineMarkdown(in: NSRange(location: location, length: end - location))
+                    if newline.location != NSNotFound { text += "\n" }
+                    location = newline.location == NSNotFound ? end : NSMaxRange(newline)
+                }
                 return
             }
             for index in run.location..<NSMaxRange(run) {

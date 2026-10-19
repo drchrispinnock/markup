@@ -14,6 +14,12 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
     let headerView = NSVisualEffectView()
     let stylePopUp = NSPopUpButton(frame: .zero, pullsDown: false)
     let viewModeControl = NSSegmentedControl()
+    let boldButton = NSButton(image: NSImage(systemSymbolName: "bold", accessibilityDescription: "Bold")!,
+                              target: nil, action: nil)
+    let italicButton = NSButton(image: NSImage(systemSymbolName: "italic", accessibilityDescription: "Italic")!,
+                                target: nil, action: nil)
+    let strikethroughButton = NSButton(
+        image: NSImage(systemSymbolName: "strikethrough", accessibilityDescription: "Strikethrough")!, target: nil, action: nil)
     let imageButton = NSButton(image: NSImage(systemSymbolName: "photo", accessibilityDescription: "Insert Image")!,
                                target: nil, action: nil)
     let textView = EditorTextView(usingTextLayoutManager: false)
@@ -34,6 +40,10 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
     /// carry it, and the line's location. It applies while the caret stays
     /// there, and is forgotten once the caret is anywhere else.
     var emptyLineStyle: (location: Int, style: BlockStyle)?
+
+    /// Inline styles chosen with the buttons while nothing is selected, and
+    /// the caret location they apply to. Forgotten once the caret moves.
+    var typingStyles: (location: Int, styles: Set<InlineStyle>)?
 
     /// Where the images directory comes from.
     var settings = Settings.shared
@@ -61,6 +71,15 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
         stylePopUp.action = #selector(styleChosen(_:))
         stylePopUp.selectItem(withTag: BlockStyle.paragraph.rawValue)
 
+        for (button, action, tip) in [(boldButton, #selector(toggleBold(_:)), "Bold (⌘B)"),
+                                      (italicButton, #selector(toggleItalic(_:)), "Italic (⌘I)"),
+                                      (strikethroughButton, #selector(toggleStrikethrough(_:)), "Strikethrough (⇧⌘X)")] {
+            button.setButtonType(.pushOnPushOff)
+            button.target = self
+            button.action = action
+            button.toolTip = tip
+        }
+
         imageButton.target = self
         imageButton.action = #selector(insertImage(_:))
         imageButton.toolTip = "Insert Image"
@@ -83,7 +102,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
             view.translatesAutoresizingMaskIntoConstraints = false
             contentView.addSubview(view)
         }
-        for control in [stylePopUp, imageButton, viewModeControl] {
+        for control in [stylePopUp, boldButton, italicButton, strikethroughButton, imageButton, viewModeControl] {
             control.translatesAutoresizingMaskIntoConstraints = false
             headerView.addSubview(control)
         }
@@ -97,7 +116,14 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
             stylePopUp.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 12),
             stylePopUp.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
 
-            imageButton.leadingAnchor.constraint(equalTo: stylePopUp.trailingAnchor, constant: 8),
+            boldButton.leadingAnchor.constraint(equalTo: stylePopUp.trailingAnchor, constant: 8),
+            boldButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+            italicButton.leadingAnchor.constraint(equalTo: boldButton.trailingAnchor, constant: 4),
+            italicButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+            strikethroughButton.leadingAnchor.constraint(equalTo: italicButton.trailingAnchor, constant: 4),
+            strikethroughButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+
+            imageButton.trailingAnchor.constraint(equalTo: viewModeControl.leadingAnchor, constant: -8),
             imageButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
 
             viewModeControl.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -12),
@@ -312,6 +338,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
                     if !hasUniform(.listLevel, item.level, in: line) || !hasUniform(.blockStyle, 0, in: line) {
                         changeAttributes(in: line) {
                             storage.addAttributes(item.lineAttributes, range: line)
+                            storage.applyInlineStyles(in: line)
                         }
                     }
                 } else {
@@ -320,6 +347,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
                         changeAttributes(in: line) {
                             storage.addAttributes(style.attributes, range: line)
                             storage.removeAttribute(.listLevel, range: line)
+                            storage.applyInlineStyles(in: line)
                         }
                     }
                 }
