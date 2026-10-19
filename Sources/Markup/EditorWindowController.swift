@@ -14,6 +14,8 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
     let headerView = NSVisualEffectView()
     let stylePopUp = NSPopUpButton(frame: .zero, pullsDown: false)
     let viewModeControl = NSSegmentedControl()
+    let imageButton = NSButton(image: NSImage(systemSymbolName: "photo", accessibilityDescription: "Insert Image")!,
+                               target: nil, action: nil)
     let textView = EditorTextView(usingTextLayoutManager: false)
 
     /// True when the text view shows the raw Markdown instead of the
@@ -32,6 +34,9 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
     /// carry it, and the line's location. It applies while the caret stays
     /// there, and is forgotten once the caret is anywhere else.
     var emptyLineStyle: (location: Int, style: BlockStyle)?
+
+    /// Where the images directory comes from.
+    var settings = Settings.shared
 
     init() {
         let window = NSWindow(
@@ -56,6 +61,10 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
         stylePopUp.action = #selector(styleChosen(_:))
         stylePopUp.selectItem(withTag: BlockStyle.paragraph.rawValue)
 
+        imageButton.target = self
+        imageButton.action = #selector(insertImage(_:))
+        imageButton.toolTip = "Insert Image"
+
         viewModeControl.segmentCount = 2
         viewModeControl.setLabel("Formatted", forSegment: 0)
         viewModeControl.setLabel("Markdown", forSegment: 1)
@@ -74,7 +83,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
             view.translatesAutoresizingMaskIntoConstraints = false
             contentView.addSubview(view)
         }
-        for control in [stylePopUp, viewModeControl] {
+        for control in [stylePopUp, imageButton, viewModeControl] {
             control.translatesAutoresizingMaskIntoConstraints = false
             headerView.addSubview(control)
         }
@@ -87,6 +96,9 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
 
             stylePopUp.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 12),
             stylePopUp.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+
+            imageButton.leadingAnchor.constraint(equalTo: stylePopUp.trailingAnchor, constant: 8),
+            imageButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
 
             viewModeControl.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -12),
             viewModeControl.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
@@ -339,7 +351,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, NSText
 
     // MARK: - NSWindowDelegate
 
-    private var markdownDocument: MarkdownDocument? {
+    var markdownDocument: MarkdownDocument? {
         document as? MarkdownDocument
     }
 

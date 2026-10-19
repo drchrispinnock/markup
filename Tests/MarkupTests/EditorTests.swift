@@ -780,3 +780,231 @@ import Testing
         #expect(pdf.numberOfPages >= 2)
     }
 }
+
+/// Markup > Settings.
+@MainActor
+@Suite struct SettingsTests {
+    let suiteName = "MarkupTests-\(UUID().uuidString)"
+    let settings: Settings
+
+    init() {
+        _ = NSApplication.shared
+        settings = Settings(defaults: UserDefaults(suiteName: suiteName)!)
+    }
+
+    @Test func imagesDirectoryIsUnsetByDefault() {
+        defer { settings.defaults.removePersistentDomain(forName: suiteName) }
+        #expect(settings.imagesDirectory == nil)
+    }
+
+    @Test func imagesDirectoryIsSaved() {
+        defer { settings.defaults.removePersistentDomain(forName: suiteName) }
+        settings.imagesDirectory = URL(fileURLWithPath: "/Users/someone/Pictures/Blog", isDirectory: true)
+        let reread = Settings(defaults: UserDefaults(suiteName: suiteName)!)
+        #expect(reread.imagesDirectory?.path == "/Users/someone/Pictures/Blog")
+        reread.imagesDirectory = nil
+        #expect(settings.imagesDirectory == nil)
+    }
+
+    @Test func windowShowsAndClearsTheImagesDirectory() {
+        defer { settings.defaults.removePersistentDomain(forName: suiteName) }
+        let controller = SettingsWindowController(settings: settings)
+        #expect(controller.imagesDirectoryControl.url == nil)
+        #expect(!controller.clearButton.isEnabled)
+
+        let folder = URL(fileURLWithPath: "/tmp", isDirectory: true)
+        controller.setImagesDirectory(folder)
+        #expect(settings.imagesDirectory == folder)
+        #expect(controller.imagesDirectoryControl.url == folder)
+        #expect(controller.clearButton.isEnabled)
+
+        controller.clearButton.performClick(nil)
+        #expect(settings.imagesDirectory == nil)
+        #expect(controller.imagesDirectoryControl.url == nil)
+        #expect(!controller.clearButton.isEnabled)
+
+    }
+
+    @Test func appMenuHasSettings() {
+        let item = MainMenu.make().items[0].submenu!.items.first { $0.title == "Settings…" }
+        #expect(item?.action == #selector(AppDelegate.showSettings(_:)))
+        #expect(item?.keyEquivalent == ",")
+    }
+}
+
+/// Images: shown in the formatted view, saved as their Markdown, inserted
+/// from the images directory.
+@MainActor
+@Suite struct ImageTests {
+    let document: MarkdownDocument
+    let editor: EditorWindowController
+    let suiteName = "MarkupTests-\(UUID().uuidString)"
+    let imagesDirectory: URL
+
+    init() throws {
+        _ = NSApplication.shared
+        imagesDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("MarkupImages-\(UUID())")
+        try FileManager.default.createDirectory(at: imagesDirectory.appendingPathComponent("cats"),
+                                                withIntermediateDirectories: true)
+        try Self.writePNG(width: 2000, height: 1000, to: imagesDirectory.appendingPathComponent("cats/tom.png"))
+
+        document = MarkdownDocument()
+        document.undoManager?.groupsByEvent = false
+        document.makeWindowControllers()
+        editor = document.windowControllers.first as! EditorWindowController
+        editor.settings = Settings(defaults: UserDefaults(suiteName: suiteName)!)
+        editor.settings.imagesDirectory = imagesDirectory
+    }
+
+    private func cleanUp() {
+        editor.settings.defaults.removePersistentDomain(forName: suiteName)
+        try? FileManager.default.removeItem(at: imagesDirectory)
+    }
+
+    static func writePNG(width: Int, height: Int, to url: URL) throws {
+        let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height, bitsPerSample: 8,
+                                   samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                   bytesPerRow: 0, bitsPerPixel: 0)!
+        rep.size = NSSize(width: width, height: height)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        NSColor.systemOrange.setFill()
+        NSRect(x: 0, y: 0, width: width, height: height).fill()
+        NSColor.systemBlue.setFill()
+        NSBezierPath(ovalIn: NSRect(x: width / 4, y: height / 4, width: width / 2, height: height / 2)).fill()
+        NSGraphicsContext.restoreGraphicsState()
+        try rep.representation(using: .png, properties: [:])!.write(to: url)
+    }
+
+    private var textView: EditorTextView { editor.textView }
+    private var storage: NSTextStorage { editor.storage }
+
+    private func step(_ action: () -> Void) {
+        document.undoManager?.beginUndoGrouping()
+        action()
+        document.undoManager?.endUndoGrouping()
+    }
+
+    private func type(_ text: String) {
+        for character in text {
+            step { textView.insertText(String(character), replacementRange: textView.selectedRange()) }
+        }
+    }
+
+    private func cell(at index: Int) -> ImageAttachmentCell? {
+        (storage.attribute(.attachment, at: index, effectiveRange: nil) as? NSTextAttachment)?.attachmentCell
+            as? ImageAttachmentCell
+    }
+
+    @Test func showsImagesAndSavesThemUnchanged() {
+        defer { cleanUp() }
+        let markdown = "# A ![cat](cats/tom.png) title\n\n- ![](<cats/tom.png> \"Tom\") item\nMissing ![x](nope.png)."
+        editor.load(markdown: markdown)
+        #expect(storage.string == "A \u{FFFC} title\n\n\u{FFFC}\u{FFFC} item\nMissing \u{FFFC}.")
+        #expect(cell(at: 2)?.picture != nil)
+        #expect(storage.blockStyle(at: 2) == .heading)
+        #expect(cell(at: 12)?.picture != nil)
+        #expect(cell(at: 27)?.picture == nil)
+        #expect(cell(at: 27)?.path == "nope.png")
+        #expect(editor.markdown == markdown)
+    }
+
+    @Test func looksInTheDocumentsFolderBeforeTheImagesDirectory() throws {
+        defer { cleanUp() }
+        let documentFolder = imagesDirectory.appendingPathComponent("doc")
+        try FileManager.default.createDirectory(at: documentFolder.appendingPathComponent("cats"), withIntermediateDirectories: true)
+        try Self.writePNG(width: 10, height: 10, to: documentFolder.appendingPathComponent("cats/tom.png"))
+        document.fileURL = documentFolder.appendingPathComponent("post.md")
+        #expect(editor.imageFolders.map(\.path) == [documentFolder.path, imagesDirectory.path])
+        #expect(MarkdownImage(alt: "", path: "cats/tom.png").fileURL(in: editor.imageFolders)
+            == documentFolder.appendingPathComponent("cats/tom.png"))
+        try FileManager.default.removeItem(at: documentFolder.appendingPathComponent("cats/tom.png"))
+        #expect(MarkdownImage(alt: "", path: "cats/tom.png").fileURL(in: editor.imageFolders)
+            == imagesDirectory.appendingPathComponent("cats/tom.png"))
+        #expect(MarkdownImage(alt: "", path: "cats%2Ftom.png").fileURL(in: editor.imageFolders) != nil)
+        #expect(MarkdownImage(alt: "", path: "https://example.com/a.png").fileURL(in: editor.imageFolders) == nil)
+    }
+
+    @Test func largeImagesShrinkToTheTextWidth() throws {
+        defer { cleanUp() }
+        editor.load(markdown: "![](cats/tom.png)")
+        let image = try #require(cell(at: 0))
+        #expect(image.cellSize() == NSSize(width: 2000, height: 1000))
+        let frame = image.cellFrame(for: textView.textContainer!, proposedLineFragment: NSRect(x: 0, y: 0, width: 502, height: 20),
+                                    glyphPosition: .zero, characterIndex: 0)
+        #expect(frame.size == NSSize(width: 500, height: 250))
+    }
+
+    @Test func typedImageMarkdownBecomesTheImage() {
+        defer { cleanUp() }
+        type("See ![a cat](cats/tom.png")
+        #expect(cell(at: 4) == nil)
+        type(") here")
+        #expect(storage.string == "See \u{FFFC} here")
+        #expect(cell(at: 4)?.picture != nil)
+        #expect(textView.selectedRange().location == 10)
+        #expect(editor.markdown == "See ![a cat](cats/tom.png) here")
+    }
+
+    /// As with the other shortcuts, undo takes back the conversion and the
+    /// keystroke that triggered it.
+    @Test func undoTurnsTheImageBackIntoText() {
+        defer { cleanUp() }
+        type("![](cats/tom.png)")
+        #expect(storage.string == "\u{FFFC}")
+        document.undoManager?.undo()
+        #expect(storage.string == "![](cats/tom.png")
+        type("x")
+        #expect(storage.string == "![](cats/tom.pngx")
+    }
+
+    @Test func copiesImagesAsMarkdownAndPastingConvertsThem() {
+        defer { cleanUp() }
+        editor.load(markdown: "- a ![x](cats/tom.png)")
+        let all = NSRange(location: 0, length: storage.length)
+        #expect(editor.plainText(for: all) == "- a ![x](cats/tom.png)")
+        step { textView.setSelectedRange(NSRange(location: storage.length, length: 0)) }
+        step { textView.insertText("\n- b ![y](cats/tom.png)", replacementRange: textView.selectedRange()) }
+        #expect(storage.string == "\u{FFFC}a \u{FFFC}\n\u{FFFC}b \u{FFFC}")
+        #expect(editor.markdown == "- a ![x](cats/tom.png)\n- b ![y](cats/tom.png)")
+    }
+
+    @Test func insertsAnImageRelativeToTheImagesDirectory() {
+        defer { cleanUp() }
+        type("Hello ")
+        step { editor.insertImage(path: "cats/tom.png", alt: "Tom [the cat]") }
+        #expect(storage.string == "Hello \u{FFFC}")
+        #expect(cell(at: 6)?.picture != nil)
+        #expect(textView.selectedRange().location == 7)
+        #expect(editor.markdown == #"Hello ![Tom \[the cat\]](cats/tom.png)"#)
+    }
+
+    @Test func pathsAreRelativeToTheImagesDirectoryOnly() {
+        defer { cleanUp() }
+        let file = imagesDirectory.appendingPathComponent("cats/tom.png")
+        #expect(EditorWindowController.path(of: file, relativeTo: imagesDirectory) == "cats/tom.png")
+        #expect(EditorWindowController.path(of: imagesDirectory, relativeTo: imagesDirectory) == nil)
+        #expect(EditorWindowController.path(of: URL(fileURLWithPath: "/etc/hosts"), relativeTo: imagesDirectory) == nil)
+        let sibling = URL(fileURLWithPath: imagesDirectory.path + "-other/a.png")
+        #expect(EditorWindowController.path(of: sibling, relativeTo: imagesDirectory) == nil)
+    }
+
+    @Test func buttonIsOffInTheMarkdownView() {
+        defer { cleanUp() }
+        #expect(editor.imageButton.isEnabled)
+        editor.setShowingMarkdown(true)
+        #expect(!editor.imageButton.isEnabled)
+        editor.setShowingMarkdown(false)
+        #expect(editor.imageButton.isEnabled)
+    }
+
+    @Test func printsImages() throws {
+        defer { cleanUp() }
+        editor.load(markdown: "Before\n![](cats/tom.png)\nAfter")
+        let operation = try document.printOperation(withSettings: [:])
+        let text = try #require((operation.view as? NSTextView)?.textStorage)
+        let attachment = text.attribute(.attachment, at: 7, effectiveRange: nil) as? NSTextAttachment
+        #expect((attachment?.attachmentCell as? ImageAttachmentCell)?.picture != nil)
+
+    }
+}

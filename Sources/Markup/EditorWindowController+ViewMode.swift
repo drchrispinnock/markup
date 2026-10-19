@@ -39,6 +39,7 @@ extension EditorWindowController {
 
         viewModeControl.selectedSegment = showMarkdown ? 1 : 0
         stylePopUp.isEnabled = !showMarkdown
+        imageButton.isEnabled = !showMarkdown
         moveCaret(to: caret)
         updateForSelection()
         window?.makeFirstResponder(textView)

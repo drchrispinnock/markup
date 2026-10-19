@@ -12,14 +12,21 @@ extension MarkdownDocument {
         printInfo.isVerticallyCentered = false
 
         let pageWidth = printInfo.paperSize.width - printInfo.leftMargin - printInfo.rightMargin
-        let operation = NSPrintOperation(view: Self.printView(for: currentMarkdown, width: pageWidth), printInfo: printInfo)
+        let operation = NSPrintOperation(view: Self.printView(for: currentMarkdown, imageFolders: imageFolders,
+                                                                   width: pageWidth), printInfo: printInfo)
         operation.jobTitle = displayName
         return operation
     }
 
+    /// The folders the document's images are looked up in.
+    var imageFolders: [URL] {
+        (windowControllers.first as? EditorWindowController)?.imageFolders
+            ?? [fileURL?.deletingLastPathComponent(), Settings.shared.imagesDirectory].compactMap { $0 }
+    }
+
     /// A text view holding the formatted document, as tall as its text.
     /// It has no window, no spelling underlines and no caret.
-    static func printView(for markdown: String, width: CGFloat) -> NSTextView {
+    static func printView(for markdown: String, imageFolders: [URL], width: CGFloat) -> NSTextView {
         let textView = NSTextView(usingTextLayoutManager: false)
         textView.frame = NSRect(x: 0, y: 0, width: width, height: 0)
         textView.isEditable = false
@@ -33,7 +40,8 @@ extension MarkdownDocument {
         // `NSColor.textColor` take their value from the view's appearance.
         textView.appearance = NSAppearance(named: .aqua)
 
-        textView.textStorage?.setAttributedString(EditorWindowController.formattedText(fromMarkdown: markdown))
+        textView.textStorage?.setAttributedString(EditorWindowController.formattedText(fromMarkdown: markdown,
+                                                                                               imageFolders: imageFolders))
         textView.layoutManager?.ensureLayout(for: textView.textContainer!)
         textView.sizeToFit()
         return textView

@@ -9,4 +9,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DevelopmentIcon.install()
         NSApp.activate()
     }
+
+    private var settingsWindowController: SettingsWindowController?
+
+    /// Markup > Settings.
+    @objc func showSettings(_ sender: Any?) {
+        if settingsWindowController == nil {
+            settingsWindowController = SettingsWindowController(settings: .shared)
+        }
+        settingsWindowController?.showWindow(sender)
+    }
 }
