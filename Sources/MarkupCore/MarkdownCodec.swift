@@ -48,6 +48,7 @@ public struct CodeFence: Hashable, Sendable {
 ///   language) and the next line of exactly that many backticks are code,
 ///   kept exactly as they are. A fence with no lines before its closing
 ///   line, or none at all, is text.
+/// - A table (`MarkdownTable`) is table lines, kept exactly as they are.
 ///
 /// Text that would otherwise read back as one of these is escaped with a
 /// backslash, so it survives a save: a paragraph "# not a heading" is written
@@ -67,6 +68,14 @@ public enum MarkdownCodec {
                     lines.append(Line(style: .code, text: String(text), fence: offset == 0 ? fence : nil))
                 }
                 index = end + 1
+                continue
+            }
+            let startsBlock = { (line: Int) in
+                structuredLine(raw[line]) != nil || CodeFence(line: raw[line]) != nil
+            }
+            if let rows = MarkdownTable.rowCount(startingAt: index, in: raw, startsBlock: startsBlock) {
+                lines += raw[index..<index + rows].map { Line(style: .table, text: String($0)) }
+                index += rows
                 continue
             }
             let text = raw[index]
@@ -192,6 +201,7 @@ public enum MarkdownCodec {
 
     /// A line that isn't code.
     private static func markdown(from line: Line) -> String {
+        guard line.style != .table else { return line.text }
         if let item = line.list {
             let needsEscape = item.marker == .bullet && taskMarker(of: line.text.drop(while: { $0 == "\\" })) != nil
             return item.markdown + (needsEscape ? "\\" : "") + line.text

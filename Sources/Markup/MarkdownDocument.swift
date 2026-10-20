@@ -12,6 +12,13 @@ final class MarkdownDocument: NSDocument {
     /// content and this is not kept up to date.
     private var markdown = ""
 
+    /// True for a file that isn't Markdown, which is edited as it is, with no
+    /// formatting. Any plain text opens (see Info.plist), but only `.md` and
+    /// `.markdown` files are Markdown. New documents are Markdown.
+    private(set) var isPlainText = false
+
+    static let markdownExtensions: Set<String> = ["md", "markdown"]
+
     /// The project window this document is shown in, if any.
     weak var project: ProjectWindowController?
 
@@ -23,7 +30,7 @@ final class MarkdownDocument: NSDocument {
     /// The document's editor, made with the Markdown read from disk.
     var editor: EditorViewController {
         if let editorIfLoaded { return editorIfLoaded }
-        let editor = EditorViewController()
+        let editor = EditorViewController(plainText: isPlainText)
         editor.document = self
         editor.load(markdown: markdown)
         editorIfLoaded = editor
@@ -51,6 +58,13 @@ final class MarkdownDocument: NSDocument {
 
     override func data(ofType typeName: String) throws -> Data {
         Data(currentMarkdown.utf8)
+    }
+
+    // Decided by the extension rather than the type, because another app's
+    // type for .md files reaches here as plain text.
+    override func read(from url: URL, ofType typeName: String) throws {
+        isPlainText = !Self.markdownExtensions.contains(url.pathExtension.lowercased())
+        try super.read(from: url, ofType: typeName)
     }
 
     override func read(from data: Data, ofType typeName: String) throws {

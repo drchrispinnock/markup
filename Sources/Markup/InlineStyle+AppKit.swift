@@ -102,7 +102,7 @@ extension Dictionary where Key == NSAttributedString.Key, Value == Any {
             attributes[style.key] = styles.contains(style) ? true : nil
         }
         let blockStyle = (attributes[.blockStyle] as? Int).flatMap(BlockStyle.init) ?? .paragraph
-        attributes[.font] = blockStyle.font(for: styles)
+        attributes[.font] = blockStyle.font(for: styles.union(attributes[.tableHeader] != nil ? [.bold] : []))
         attributes[.strikethroughStyle] = styles.contains(.strikethrough) ? NSUnderlineStyle.single.rawValue : nil
         attributes[.backgroundColor] = InlineStyle.background(for: styles)
         attributes[.baselineOffset] = blockStyle.baselineOffset(for: styles)
@@ -131,13 +131,13 @@ extension NSAttributedString {
 extension NSMutableAttributedString {
     /// Sets the font, strikethrough, shading, baseline offset and link colour
     /// of every character in `range` from its line's style, its inline
-    /// styles and its link.
+    /// styles and its link. A table's header cells are bold.
     /// Needed wherever a line's style is set, since that sets the plain font.
     func applyInlineStyles(in range: NSRange) {
         enumerateAttributes(in: range) { attributes, run, _ in
             let style = (attributes[.blockStyle] as? Int).flatMap(BlockStyle.init) ?? .paragraph
             let styles = Set(InlineStyle.allCases.filter { attributes[$0.key] != nil })
-            let font = style.font(for: styles)
+            let font = style.font(for: styles.union(attributes[.tableHeader] != nil ? [.bold] : []))
             if attributes[.font] as? NSFont != font {
                 addAttribute(.font, value: font, range: run)
             }

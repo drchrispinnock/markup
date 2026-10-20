@@ -2,8 +2,10 @@ import AppKit
 import MarkupCore
 
 extension EditorViewController {
+    /// Shows `markdown` formatted, or as it is in a plain text document.
     func load(markdown: String) {
-        storage.setAttributedString(Self.formattedText(fromMarkdown: markdown, imageFolders: imageFolders))
+        storage.setAttributedString(isPlainText ? NSAttributedString(string: markdown, attributes: Self.markdownAttributes)
+                                                : Self.formattedText(fromMarkdown: markdown, imageFolders: imageFolders))
         textView.setSelectedRange(NSRange(location: 0, length: 0))
         updateForSelection()
     }
@@ -19,7 +21,18 @@ extension EditorViewController {
         let lines = MarkdownCodec.lines(fromMarkdown: markdown)
         let text = NSMutableAttributedString()
         var blockFence: CodeFence?
+        var tableLines: [String] = []
         for (index, line) in lines.enumerated() {
+            // A table is shown as a grid of cells once all its lines are in.
+            if line.style == .table {
+                tableLines.append(line.text)
+                if index == lines.count - 1 || lines[index + 1].style != .table,
+                   let table = MarkdownTable.table(from: tableLines) {
+                    text.append(tableText(table, imageFolders: imageFolders))
+                    tableLines = []
+                }
+                continue
+            }
             let terminator = index < lines.count - 1 ? "\n" : ""
             if let item = line.list {
                 text.append(item.markerString)
@@ -47,7 +60,7 @@ extension EditorViewController {
 
     /// One line's text (and newline, if any), with its emphasis and images
     /// shown, and comments hidden.
-    private static func inlineText(_ text: String, attributes: [NSAttributedString.Key: Any],
+    static func inlineText(_ text: String, attributes: [NSAttributedString.Key: Any],
                                    imageFolders: [URL]) -> NSAttributedString {
         let hasNewline = text.hasSuffix("\n")
         let result = NSMutableAttributedString()
@@ -81,6 +94,14 @@ extension EditorViewController {
         repeat {
             let line = lineRange(at: location)
             let contents = contentsRange(of: line)
+            if isTableLine(line) {
+                let cells = tableLines(around: line)
+                // Tables need a blank line between them.
+                if lines.last?.style == .table { lines.append(Line(style: .paragraph, text: "")) }
+                lines += MarkdownTable.lines(for: markdownTable(of: cells)).map { Line(style: .table, text: $0) }
+                location = NSMaxRange(cells.last!)
+                continue
+            }
             if let item = listItem(at: line) {
                 let text = inlineMarkdown(in: NSRange(location: contents.location + 1, length: contents.length - 1))
                 lines.append(Line(style: .paragraph, text: text, list: item))
@@ -120,7 +141,7 @@ extension EditorViewController {
 
     /// The Markdown for `range`, which is within one line: inline styles as
     /// their delimiters, images as written.
-    private func inlineMarkdown(in range: NSRange) -> String {
+    func inlineMarkdown(in range: NSRange) -> String {
         var spans: [InlineSpan] = []
         storage.enumerateAttributes(in: range) { attributes, run, _ in
             let styles = Set(InlineStyle.allCases.filter { attributes[$0.key] != nil })
@@ -137,8 +158,30 @@ extension EditorViewController {
 
     /// The text of `range` for the pasteboard, with each list marker, image
     /// and inline style written as its Markdown, so pasting the text back
-    /// recreates them.
+    /// recreates them. A table the range goes beyond one cell of is written
+    /// whole, as a Markdown table.
     func plainText(for range: NSRange) -> String {
+        guard !isShowingMarkdown else { return (storage.string as NSString).substring(with: range) }
+        let touched = lineRanges(in: range).filter(isTableLine)
+        if let cell = touched.first, touched.count > 1 || NSMaxRange(range) > NSMaxRange(contentsRange(of: cell)) {
+            var text = ""
+            var location = range.location
+            while location < NSMaxRange(range) {
+                let line = lineRange(at: location)
+                if isTableLine(line) {
+                    let cells = tableLines(around: line)
+                    let end = NSMaxRange(cells.last!)
+                    text += MarkdownTable.lines(for: markdownTable(of: cells)).joined(separator: "\n")
+                    if NSMaxRange(range) >= end { text += "\n" }
+                    location = end
+                } else {
+                    let end = min(NSMaxRange(line), NSMaxRange(range))
+                    text += plainText(for: NSRange(location: location, length: end - location))
+                    location = end
+                }
+            }
+            return text
+        }
         var text = ""
         storage.enumerateAttribute(.listMarker, in: range) { value, run, _ in
             guard let raw = value as? Int, let marker = ListMarker(rawValue: raw) else {

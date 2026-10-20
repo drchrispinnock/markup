@@ -37,7 +37,9 @@ extension EditorViewController {
                 location = NSMaxRange(line)
                 continue
             }
-            if let item = listItem(at: line) {
+            if isTableLine(line) {
+                // A cell can't be a heading or list item.
+            } else if let item = listItem(at: line) {
                 convertTaskPrefix(of: line, item: item, after: edit)
             } else if !convertHeadingPrefix(of: line, after: edit) {
                 convertListPrefix(of: line, after: edit)
@@ -48,6 +50,7 @@ extension EditorViewController {
             convertComments(in: lineRange(at: location), after: edit)
             location = NSMaxRange(lineRange(at: location))
         }
+        convertTables(after: edit)
     }
 
     /// Removes a typed "# ", "## " or "### " and gives the line that heading

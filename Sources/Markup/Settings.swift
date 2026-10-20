@@ -6,6 +6,7 @@ final class Settings {
     static let shared = Settings(defaults: .standard)
 
     static let imagesDirectoryKey = "MarkupImagesDirectory"
+    static let openProjectsKey = "MarkupOpenProjects"
 
     let defaults: UserDefaults
 
@@ -21,6 +22,32 @@ final class Settings {
         }
         set {
             defaults.set(newValue?.path, forKey: Self.imagesDirectoryKey)
+        }
+    }
+
+    /// A project window open when the app last quit: its folder, and the
+    /// file it showed, if any.
+    struct OpenProject: Equatable {
+        var folder: URL
+        var file: URL?
+    }
+
+    /// The project windows open when the app last quit, to open again at
+    /// launch.
+    var openProjects: [OpenProject] {
+        get {
+            let saved = defaults.array(forKey: Self.openProjectsKey) as? [[String: String]] ?? []
+            return saved.compactMap { project in
+                project["folder"].map { folder in
+                    OpenProject(folder: URL(fileURLWithPath: folder, isDirectory: true),
+                                file: project["file"].map { URL(fileURLWithPath: $0) })
+                }
+            }
+        }
+        set {
+            defaults.set(newValue.map { project in
+                ["folder": project.folder.path, "file": project.file?.path].compactMapValues { $0 }
+            }, forKey: Self.openProjectsKey)
         }
     }
 

@@ -1,7 +1,7 @@
 import AppKit
 
 /// File > Print prints the document formatted, as the editor shows it,
-/// whichever view the window is in.
+/// whichever view the window is in. Plain text prints as it is.
 extension MarkdownDocument {
     override func printOperation(withSettings printSettings: [NSPrintInfo.AttributeKey: Any]) throws -> NSPrintOperation {
         let printInfo = self.printInfo.copy() as! NSPrintInfo
@@ -12,8 +12,8 @@ extension MarkdownDocument {
         printInfo.isVerticallyCentered = false
 
         let pageWidth = printInfo.paperSize.width - printInfo.leftMargin - printInfo.rightMargin
-        let operation = NSPrintOperation(view: Self.printView(for: currentMarkdown, imageFolders: imageFolders,
-                                                                   width: pageWidth), printInfo: printInfo)
+        let operation = NSPrintOperation(view: Self.printView(for: currentMarkdown, plainText: isPlainText,
+                                                                   imageFolders: imageFolders, width: pageWidth), printInfo: printInfo)
         operation.jobTitle = displayName
         return operation
     }
@@ -25,7 +25,8 @@ extension MarkdownDocument {
 
     /// A text view holding the formatted document, as tall as its text.
     /// It has no window, no spelling underlines and no caret.
-    static func printView(for markdown: String, imageFolders: [URL], width: CGFloat) -> NSTextView {
+    static func printView(for markdown: String, plainText: Bool, imageFolders: [URL],
+                          width: CGFloat) -> NSTextView {
         let textView = NSTextView(usingTextLayoutManager: false)
         textView.textContainer?.replaceLayoutManager(EditorLayoutManager())
         textView.frame = NSRect(x: 0, y: 0, width: width, height: 0)
@@ -40,8 +41,9 @@ extension MarkdownDocument {
         // `NSColor.textColor` take their value from the view's appearance.
         textView.appearance = NSAppearance(named: .aqua)
 
-        textView.textStorage?.setAttributedString(EditorViewController.formattedText(fromMarkdown: markdown,
-                                                                                               imageFolders: imageFolders))
+        textView.textStorage?.setAttributedString(
+            plainText ? NSAttributedString(string: markdown, attributes: EditorViewController.markdownAttributes)
+                      : EditorViewController.formattedText(fromMarkdown: markdown, imageFolders: imageFolders))
         textView.layoutManager?.ensureLayout(for: textView.textContainer!)
         textView.sizeToFit()
         return textView

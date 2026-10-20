@@ -1,7 +1,7 @@
 import AppKit
 
 /// A window for a folder (File > Open Project): a sidebar listing the folder's
-/// Markdown files, and the editor of the one chosen.
+/// Markdown and plain text files, and the editor of the one chosen.
 ///
 /// Each file chosen is opened as a `MarkdownDocument` without a window of its
 /// own, and stays open while the window shows other files, keeping its
@@ -85,7 +85,7 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
 
     // MARK: - Showing files
 
-    /// Opens the Markdown file at `url` and shows it. A file already open
+    /// Opens the file at `url` and shows it. A file already open
     /// in a window of its own is brought to the front there instead.
     func open(_ url: URL) {
         NSDocumentController.shared.openDocument(withContentsOf: url, display: false) { [weak self] document, _, error in

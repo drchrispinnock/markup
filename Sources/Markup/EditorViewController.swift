@@ -34,13 +34,21 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         target: nil, action: nil)
     let linkButton = NSButton(image: NSImage(systemSymbolName: "link", accessibilityDescription: "Link")!,
                               target: nil, action: nil)
+    let tableButton = NSButton(image: NSImage(systemSymbolName: "tablecells", accessibilityDescription: "Insert Table")!,
+                               target: nil, action: nil)
     let imageButton = NSButton(image: NSImage(systemSymbolName: "photo", accessibilityDescription: "Insert Image")!,
                                target: nil, action: nil)
     let textView = EditorTextView(usingTextLayoutManager: false)
+    /// Stands in for the formatting controls when editing plain text.
+    let plainTextLabel = NSTextField(labelWithString: "Plain Text")
 
     /// True when the text view shows the raw Markdown instead of the
     /// formatted text. Formatting, shortcuts and list commands are off then.
     var isShowingMarkdown = false
+
+    /// True for a file that isn't Markdown. It is always shown as it is, as
+    /// the Markdown view shows Markdown, and has no formatting controls.
+    let isPlainText: Bool
 
     /// The range of the text inserted by the edit in progress, recorded when
     /// the text view asks to change the text and acted on once it has.
@@ -68,15 +76,21 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     /// The document being edited. It owns this controller.
     weak var document: MarkdownDocument?
 
-    init() {
+    init(plainText: Bool = false) {
+        isPlainText = plainText
+        isShowingMarkdown = plainText
         super.init(nibName: nil, bundle: nil)
 
         headerView.material = .headerView
         headerView.blendingMode = .withinWindow
 
+        // A table row shows as Table, which can't be chosen: tables are
+        // made with the table button.
+        stylePopUp.autoenablesItems = false
         for style in BlockStyle.allCases {
             stylePopUp.addItem(withTitle: style.title)
             stylePopUp.lastItem?.tag = style.rawValue
+            stylePopUp.lastItem?.isEnabled = style != .table
         }
         stylePopUp.target = self
         stylePopUp.action = #selector(styleChosen(_:))
@@ -97,6 +111,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         linkButton.target = self
         linkButton.action = #selector(editLink(_:))
         linkButton.toolTip = "Link (⌘K)"
+
+        tableButton.target = self
+        tableButton.action = #selector(showTableMenu(_:))
+        tableButton.toolTip = "Insert Table"
 
         imageButton.target = self
         imageButton.action = #selector(insertImage(_:))
@@ -121,10 +139,15 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             contentView.addSubview(view)
         }
         for control in [stylePopUp, boldButton, italicButton, strikethroughButton, codeButton, subscriptButton, superscriptButton,
-                        linkButton, imageButton, viewModeControl] {
+                        linkButton, tableButton, imageButton, viewModeControl] {
             control.translatesAutoresizingMaskIntoConstraints = false
+            control.isHidden = plainText
             headerView.addSubview(control)
         }
+        plainTextLabel.textColor = .secondaryLabelColor
+        plainTextLabel.translatesAutoresizingMaskIntoConstraints = false
+        plainTextLabel.isHidden = !plainText
+        headerView.addSubview(plainTextLabel)
 
         NSLayoutConstraint.activate([
             headerView.topAnchor.constraint(equalTo: contentView.topAnchor),
@@ -148,13 +171,18 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             superscriptButton.leadingAnchor.constraint(equalTo: subscriptButton.trailingAnchor, constant: 4),
             superscriptButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
 
-            linkButton.trailingAnchor.constraint(equalTo: imageButton.leadingAnchor, constant: -4),
+            linkButton.trailingAnchor.constraint(equalTo: tableButton.leadingAnchor, constant: -4),
             linkButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+            tableButton.trailingAnchor.constraint(equalTo: imageButton.leadingAnchor, constant: -4),
+            tableButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
             imageButton.trailingAnchor.constraint(equalTo: viewModeControl.leadingAnchor, constant: -8),
             imageButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
 
             viewModeControl.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -12),
             viewModeControl.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+
+            plainTextLabel.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -12),
+            plainTextLabel.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
 
             divider.topAnchor.constraint(equalTo: headerView.bottomAnchor),
             divider.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
@@ -170,7 +198,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         textView.delegate = self
         storage.delegate = self
         textView.markerClickHandler = { [unowned self] index in toggleCheckbox(at: index) }
-        textView.plainTextForCopy = { [unowned self] range in plainText(for: range) }
+        textView.plainTextForCopy = { [unowned self] range in self.plainText(for: range) }
     }
 
     @available(*, unavailable)
@@ -214,7 +242,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         textView.isAutomaticTextReplacementEnabled = false
         textView.applyCheckingDefaults()
 
-        textView.typingAttributes = BlockStyle.paragraph.attributes
+        textView.typingAttributes = isPlainText ? Self.markdownAttributes : BlockStyle.paragraph.attributes
         textView.textContainerInset = NSSize(width: 24, height: 24)
 
         scrollView.documentView = textView
@@ -325,11 +353,11 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         guard !isShowingMarkdown else { return false }
         return switch commandSelector {
         case #selector(NSResponder.insertNewline(_:)):
-            insertNewlineInList() || insertNewlineAfterHeading() || insertNewlineInCode()
+            insertNewlineInTable() || insertNewlineInList() || insertNewlineAfterHeading() || insertNewlineInCode()
         case #selector(NSResponder.insertTab(_:)):
-            changeListLevel(by: 1)
+            moveToCell(forward: true) || changeListLevel(by: 1)
         case #selector(NSResponder.insertBacktab(_:)):
-            changeListLevel(by: -1)
+            moveToCell(forward: false) || changeListLevel(by: -1)
         default:
             false
         }
@@ -337,6 +365,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
 
     func textView(_ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange,
                   replacementString: String?) -> Bool {
+        if !isShowingMarkdown, !isAdjustingText, let undoManager, !undoManager.isUndoing, !undoManager.isRedoing,
+           !allowsTableEdit(in: affectedCharRange, replacement: replacementString ?? "") {
+            return false
+        }
         if let replacementString, !isAdjustingText {
             pendingEdit = NSRange(location: affectedCharRange.location, length: (replacementString as NSString).length)
         }
@@ -367,24 +399,39 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             for line in lineRanges(in: editedRange) where line.length > 0 {
                 if let item = listItem(at: line) {
                     if !hasUniform(.listLevel, item.level, in: line) || !hasUniform(.blockStyle, 0, in: line)
-                        || contains(.codeFence, in: line) {
+                        || contains(.codeFence, in: line) || contains(.tableHeader, in: line) {
                         changeAttributes(in: line) {
                             storage.addAttributes(item.lineAttributes, range: line)
                             storage.removeAttribute(.codeFence, range: line)
+                            storage.removeAttribute(.tableHeader, range: line)
                             storage.applyInlineStyles(in: line)
                         }
                     }
                 } else {
-                    let style = storage.blockStyle(at: line.location)
+                    // A table cell keeps its first character's place in the
+                    // table, and whether it is in the header.
+                    let cell = tableBlock(at: line.location) != nil
+                        ? storage.attribute(.paragraphStyle, at: line.location, effectiveRange: nil) as? NSParagraphStyle : nil
+                    let isHeader = cell != nil && storage.attribute(.tableHeader, at: line.location, effectiveRange: nil) != nil
+                    let style = cell != nil ? .table : storage.blockStyle(at: line.location) == .table ? .paragraph
+                        : storage.blockStyle(at: line.location)
                     // Code keeps its text as typed, so it has no inline
                     // styles, and the whole line has its first character's
                     // fence.
                     let fence = style == .code ? storage.attribute(.codeFence, at: line.location, effectiveRange: nil) as? CodeFence : nil
                     let hasInlineStyles = style == .code && NSAttributedString.Key.inlineFormatting.contains { contains($0, in: line) }
                     if !hasUniform(.blockStyle, style.rawValue, in: line) || contains(.listLevel, in: line)
-                        || !hasUniformFence(fence, in: line) || hasInlineStyles {
+                        || !hasUniformFence(fence, in: line) || hasInlineStyles
+                        || !hasUniformPresence(.tableHeader, isHeader, in: line)
+                        || (cell != nil && !hasUniformParagraphStyle(cell!, in: line)) {
                         changeAttributes(in: line) {
                             storage.addAttributes(style.attributes, range: line)
+                            if let cell { storage.addAttribute(.paragraphStyle, value: cell, range: line) }
+                            if isHeader {
+                                storage.addAttribute(.tableHeader, value: true, range: line)
+                            } else {
+                                storage.removeAttribute(.tableHeader, range: line)
+                            }
                             storage.removeAttribute(.listLevel, range: line)
                             storage.removeAttribute(.codeFence, range: line)
                             if let fence { storage.addAttribute(.codeFence, value: fence, range: line) }
@@ -398,7 +445,30 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
                     }
                 }
             }
+            updateTables(in: editedRange)
         }
+    }
+
+    private func hasUniformPresence(_ key: NSAttributedString.Key, _ isPresent: Bool, in range: NSRange) -> Bool {
+        var isUniform = true
+        storage.enumerateAttribute(key, in: range) { found, _, stop in
+            if (found != nil) != isPresent {
+                isUniform = false
+                stop.pointee = true
+            }
+        }
+        return isUniform
+    }
+
+    private func hasUniformParagraphStyle(_ style: NSParagraphStyle, in range: NSRange) -> Bool {
+        var isUniform = true
+        storage.enumerateAttribute(.paragraphStyle, in: range) { found, _, stop in
+            if found as? NSParagraphStyle !== style {
+                isUniform = false
+                stop.pointee = true
+            }
+        }
+        return isUniform
     }
 
     private func hasUniform(_ key: NSAttributedString.Key, _ value: Int, in range: NSRange) -> Bool {

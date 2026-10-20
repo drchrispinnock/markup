@@ -1,7 +1,8 @@
 import AppKit
+import UniformTypeIdentifiers
 
-/// A project window's sidebar: the folder's subfolders and Markdown files, as
-/// an outline. Hidden files and packages are left out. It follows changes
+/// A project window's sidebar: the folder's subfolders and Markdown and other
+/// plain text files, as an outline. Hidden files and packages are left out. It follows changes
 /// on disk, keeping folders open and the selection where they were.
 @MainActor
 final class ProjectSidebarController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
@@ -28,7 +29,7 @@ final class ProjectSidebarController: NSViewController, NSOutlineViewDataSource,
 
         /// Folders first, then files, each in Finder's order.
         private static func contents(of folder: URL) -> [Node] {
-            let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey]
+            let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey, .contentTypeKey]
             let urls = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys,
                                                                      options: [.skipsHiddenFiles])) ?? []
             let nodes = urls.compactMap { url -> Node? in
@@ -36,7 +37,8 @@ final class ProjectSidebarController: NSViewController, NSOutlineViewDataSource,
                 if values?.isDirectory == true {
                     return values?.isPackage == true ? nil : Node(url: url.standardizedFileURL, isFolder: true)
                 }
-                return isMarkdown(url) ? Node(url: url.standardizedFileURL, isFolder: false) : nil
+                let isText = isMarkdown(url) || values?.contentType?.conforms(to: .plainText) == true
+                return isText ? Node(url: url.standardizedFileURL, isFolder: false) : nil
             }
             return nodes.sorted { a, b in
                 a.isFolder != b.isFolder ? a.isFolder : a.name.localizedStandardCompare(b.name) == .orderedAscending
@@ -177,7 +179,8 @@ final class ProjectSidebarController: NSViewController, NSOutlineViewDataSource,
         let cell = outlineView.makeView(withIdentifier: identifier, owner: nil) as? FileCell ?? FileCell()
         cell.identifier = identifier
         cell.textField?.stringValue = node.name
-        cell.imageView?.image = NSImage(systemSymbolName: node.isFolder ? "folder" : "doc.text",
+        let symbol = node.isFolder ? "folder" : Node.isMarkdown(node.url) ? "doc.richtext" : "doc.plaintext"
+        cell.imageView?.image = NSImage(systemSymbolName: symbol,
                                         accessibilityDescription: nil)
         cell.editedMark.isHidden = !editedFiles.contains(node.url)
         return cell

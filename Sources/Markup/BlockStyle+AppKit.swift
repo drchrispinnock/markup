@@ -9,6 +9,8 @@ extension NSAttributedString.Key {
     /// when it isn't plain "```". A change of fence between two code lines
     /// starts a new block.
     static let codeFence = NSAttributedString.Key("MarkupCodeFence")
+    /// True on every character of a table's header cells, which are bold.
+    static let tableHeader = NSAttributedString.Key("MarkupTableHeader")
 }
 
 extension BlockStyle {
@@ -19,6 +21,7 @@ extension BlockStyle {
         case .subsubheading: .systemFont(ofSize: 18, weight: .semibold)
         case .paragraph: .systemFont(ofSize: 15)
         case .code: .monospacedSystemFont(ofSize: 13.5, weight: .regular)
+        case .table: .systemFont(ofSize: 15)
         }
     }
 

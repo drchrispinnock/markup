@@ -63,6 +63,7 @@ enum MainMenu {
                            keyEquivalent: "H")
         formatMenu.addItem(.separator())
         formatMenu.addItem(withTitle: "Link…", action: #selector(EditorViewController.editLink(_:)), keyEquivalent: "k")
+        formatMenu.addItem(submenu: EditorViewController.tableMenu(), title: "Table")
         mainMenu.addItem(submenu: formatMenu, title: "Format")
 
         let viewMenu = NSMenu(title: "View")

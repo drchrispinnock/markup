@@ -72,6 +72,7 @@ extension EditorViewController {
             emptyLineStyle = nil
             textView.typingAttributes = item.lineAttributes.withInlineStyles(inlineStyles, link: link)
             stylePopUp.selectItem(withTag: BlockStyle.paragraph.rawValue)
+            stylePopUp.isEnabled = true
             return
         }
         let style: BlockStyle
@@ -85,6 +86,13 @@ extension EditorViewController {
             emptyLineStyle = nil
         }
         var attributes = style.attributes.withInlineStyles(inlineStyles, link: link)
+        if style == .table, line.length > 0 {
+            // Typing stays in the cell.
+            var cell = style.attributes
+            cell[.paragraphStyle] = storage.attribute(.paragraphStyle, at: line.location, effectiveRange: nil)
+            cell[.tableHeader] = storage.attribute(.tableHeader, at: line.location, effectiveRange: nil)
+            attributes = cell.withInlineStyles(inlineStyles, link: link)
+        }
         if style == .code {
             // New code lines belong to the same block.
             attributes[.codeFence] = line.length > 0
@@ -92,6 +100,8 @@ extension EditorViewController {
         }
         textView.typingAttributes = attributes
         stylePopUp.selectItem(withTag: style.rawValue)
+        // A cell can't be given another style.
+        stylePopUp.isEnabled = style != .table
     }
 
     /// Return at the end of a heading starts a paragraph on the new line.

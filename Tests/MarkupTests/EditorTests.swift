@@ -1618,7 +1618,7 @@ import Testing
         try manager.createDirectory(at: folder.appendingPathComponent("notes"), withIntermediateDirectories: true)
         try manager.createDirectory(at: folder.appendingPathComponent("Pages.app"), withIntermediateDirectories: true)
         for (name, text) in [("b.md", "# B"), ("a.md", "A text"), ("notes/c.markdown", "C"), ("notes.txt", "x"),
-                             (".hidden.md", "h")] {
+                             (".hidden.md", "h"), ("picture.png", "p")] {
             try Data(text.utf8).write(to: folder.appendingPathComponent(name))
         }
         project = ProjectWindowController(root: folder)
@@ -1632,9 +1632,9 @@ import Testing
         return document
     }
 
-    @Test func sidebarListsFoldersThenMarkdownFiles() {
+    @Test func sidebarListsFoldersThenTextFiles() {
         let names = project.sidebar.rootNode.children.map(\.name)
-        #expect(names == ["notes", "a.md", "b.md"])
+        #expect(names == ["notes", "a.md", "b.md", "notes.txt"])
         #expect(project.sidebar.rootNode.children[0].children.map(\.name) == ["c.markdown"])
     }
 
@@ -1682,6 +1682,59 @@ import Testing
         #expect(project.sidebar.outlineView.row(forItem: node) == project.sidebar.outlineView.selectedRow)
     }
 
+    @Test func textFilesOpenAsPlainText() throws {
+        let notes = try document("notes.txt")
+        project.show(notes)
+        #expect(notes.isPlainText)
+        #expect(notes.editor.textView.string == "x")
+    }
+
+    // Reopening the file goes through NSDocumentController, which can't open
+    // documents here, because the test runner doesn't declare Markup's
+    // document types.
+    @Test func projectsOpenAtQuitOpenAgainAtLaunch() throws {
+        let settings = Settings(defaults: UserDefaults(suiteName: "MarkupTests-\(UUID().uuidString)")!)
+        let quitting = AppDelegate()
+        quitting.settings = settings
+        #expect(quitting.applicationShouldOpenUntitledFile(NSApp))
+        quitting.openProject(at: folder).show(try document("notes/c.markdown"))
+        quitting.applicationWillTerminate(Notification(name: NSApplication.willTerminateNotification))
+        quitting.projects.forEach { $0.window?.close() }
+        let file = folder.appendingPathComponent("notes/c.markdown").standardizedFileURL
+        #expect(settings.openProjects == [Settings.OpenProject(folder: folder.standardizedFileURL, file: file)])
+
+        settings.openProjects = [Settings.OpenProject(folder: folder)]
+        let launching = AppDelegate()
+        launching.settings = settings
+        #expect(!launching.applicationShouldOpenUntitledFile(NSApp))
+        launching.reopenProjects()
+        #expect(launching.projects.map(\.root) == [folder.standardizedFileURL])
+        launching.projects.forEach { $0.window?.close() }
+    }
+
+    @Test func projectsWithNoFileShownReopenWithNone() throws {
+        let settings = Settings(defaults: UserDefaults(suiteName: "MarkupTests-\(UUID().uuidString)")!)
+        settings.openProjects = [Settings.OpenProject(folder: folder, file: folder.appendingPathComponent("gone.md"))]
+        let delegate = AppDelegate()
+        delegate.settings = settings
+        delegate.reopenProjects()
+        #expect(delegate.projects.count == 1)
+        #expect(delegate.projects.first?.currentDocument == nil)
+        delegate.applicationWillTerminate(Notification(name: NSApplication.willTerminateNotification))
+        #expect(settings.openProjects == [Settings.OpenProject(folder: folder.standardizedFileURL, file: nil)])
+        delegate.projects.forEach { $0.window?.close() }
+    }
+
+    @Test func projectFoldersThatHaveGoneAreNotReopened() throws {
+        let settings = Settings(defaults: UserDefaults(suiteName: "MarkupTests-\(UUID().uuidString)")!)
+        settings.openProjects = [Settings.OpenProject(folder: folder.appendingPathComponent("gone"))]
+        let delegate = AppDelegate()
+        delegate.settings = settings
+        #expect(delegate.applicationShouldOpenUntitledFile(NSApp))
+        delegate.reopenProjects()
+        #expect(delegate.projects.isEmpty)
+    }
+
     @Test func closingWithNoUnsavedChangesClosesTheDocuments() throws {
         let a = try document("a.md")
         project.show(a)
@@ -1705,5 +1758,305 @@ import Testing
         #expect(textView.validateUserInterfaceItem(find))
         textView.performTextFinderAction(find)
         #expect(textView.enclosingScrollView?.isFindBarVisible == true)
+    }
+}
+
+/// Files that aren't Markdown open as plain text, with no formatting.
+@MainActor
+@Suite struct PlainTextTests {
+    let folder: URL
+    static let sample = "# not a heading\n- not a list\n**not bold**\n"
+
+    init() throws {
+        _ = NSApplication.shared
+        folder = FileManager.default.temporaryDirectory.appendingPathComponent("MarkupPlainTextTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    }
+
+    private func open(_ name: String, ofType typeName: String = "public.plain-text") throws -> MarkdownDocument {
+        let url = folder.appendingPathComponent(name)
+        try Data(Self.sample.utf8).write(to: url)
+        let document = try MarkdownDocument(contentsOf: url, ofType: typeName)
+        document.undoManager?.groupsByEvent = false
+        document.makeWindowControllers()
+        return document
+    }
+
+    @Test func textFilesArePlainTextAndMarkdownFilesAreNot() throws {
+        #expect(try open("notes.txt").isPlainText)
+        #expect(try open("README").isPlainText)
+        // Another app's type for .md files reaches the document as plain text.
+        #expect(try !open("notes.md").isPlainText)
+        #expect(try !open("notes.MARKDOWN", ofType: "net.daringfireball.markdown").isPlainText)
+        #expect(!MarkdownDocument().isPlainText)
+    }
+
+    @Test func showsTheTextAsItIsWithNoFormattingControls() throws {
+        let editor = try open("notes.txt").editor
+        #expect(editor.textView.string == Self.sample)
+        #expect(editor.isShowingMarkdown)
+        #expect(!editor.plainTextLabel.isHidden)
+        for control in [editor.stylePopUp, editor.boldButton, editor.linkButton, editor.imageButton,
+                        editor.viewModeControl] as [NSView] {
+            #expect(control.isHidden)
+        }
+    }
+
+    @Test func markdownFilesHaveNoPlainTextLabel() throws {
+        #expect(try open("notes.md").editor.plainTextLabel.isHidden)
+    }
+
+    @Test func typedMarkdownStaysAsTyped() throws {
+        let document = try open("notes.txt")
+        let textView = document.editor.textView
+        textView.setSelectedRange(NSRange(location: textView.string.utf16.count, length: 0))
+        for character in "## *a* - [ ] b" {
+            document.undoManager?.beginUndoGrouping()
+            textView.insertText(String(character), replacementRange: textView.selectedRange())
+            document.undoManager?.endUndoGrouping()
+        }
+        let data = try document.data(ofType: "public.plain-text")
+        #expect(String(decoding: data, as: UTF8.self) == Self.sample + "## *a* - [ ] b")
+    }
+
+    @Test func cannotSwitchToTheFormattedView() throws {
+        let editor = try open("notes.txt").editor
+        let item = NSMenuItem(title: "Show Markdown", action: #selector(EditorViewController.toggleMarkdown(_:)), keyEquivalent: "")
+        #expect(!editor.validateMenuItem(item))
+        editor.toggleMarkdown(item)
+        #expect(editor.isShowingMarkdown)
+        #expect(editor.textView.string == Self.sample)
+    }
+
+    @Test func copiesTheTextAsItIs() throws {
+        let editor = try open("notes.txt").editor
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("MarkupPlainTextTests-\(UUID().uuidString)"))
+        editor.textView.setSelectedRange(NSRange(location: 0, length: editor.textView.string.utf16.count))
+        _ = editor.textView.writeSelection(to: pasteboard, type: .string)
+        #expect(pasteboard.string(forType: .string) == Self.sample)
+    }
+
+    @Test func printsTheTextAsItIs() throws {
+        let operation = try open("notes.txt").printOperation(withSettings: [:])
+        let text = try #require((operation.view as? NSTextView)?.textStorage)
+        #expect(text.string == Self.sample)
+    }
+}
+
+/// Tables: shown as a grid of cells, saved as Markdown tables.
+@MainActor
+@Suite struct TableTests {
+    let document: MarkdownDocument
+    let editor: EditorViewController
+
+    init() {
+        _ = NSApplication.shared
+        document = MarkdownDocument()
+        document.undoManager?.groupsByEvent = false
+        document.makeWindowControllers()
+        editor = document.editor
+    }
+
+    private var textView: EditorTextView { editor.textView }
+    private var storage: NSTextStorage { editor.storage }
+
+    private func step(_ action: () -> Void) {
+        document.undoManager?.beginUndoGrouping()
+        action()
+        document.undoManager?.endUndoGrouping()
+    }
+
+    private func type(_ text: String) {
+        for character in text {
+            if character == "\n" {
+                press(#selector(NSResponder.insertNewline(_:)))
+            } else {
+                step { textView.insertText(String(character), replacementRange: textView.selectedRange()) }
+            }
+        }
+    }
+
+    private func press(_ command: Selector) {
+        step { textView.doCommand(by: command) }
+    }
+
+    private func insertTable(columns: Int) {
+        let item = EditorViewController.tableMenu().items.first { $0.tag == columns }!
+        step { editor.insertTable(item) }
+    }
+
+    private func isBold(at location: Int) -> Bool {
+        (storage.attribute(.font, at: location, effectiveRange: nil) as! NSFont).fontDescriptor.symbolicTraits.contains(.bold)
+    }
+
+    private func cell(at location: Int) -> (row: Int, column: Int)? {
+        editor.tableBlock(at: location).map { ($0.startingRow, $0.startingColumn) }
+    }
+
+    private var selectedText: String {
+        (textView.string as NSString).substring(with: textView.selectedRange())
+    }
+
+    static let sample = "| Name | Count |\n| --- | --: |\n| **one** | 1 |"
+
+    @Test func showsTheTableAsAGridAndSavesItAsMarkdown() {
+        editor.load(markdown: Self.sample)
+        #expect(textView.string == "Name\nCount\none\n1\n")
+        let block = editor.tableBlock(at: 0)
+        #expect(block?.table.numberOfColumns == 2)
+        #expect(block?.backgroundColor != nil)
+        #expect(cell(at: 5)! == (0, 1) && cell(at: 11)! == (1, 0) && cell(at: 15)! == (1, 1))
+        #expect(editor.tableBlock(at: 11)?.table === block?.table)
+        #expect(isBold(at: 0) && isBold(at: 11) && storage.attribute(.inlineBold, at: 11, effectiveRange: nil) != nil)
+        #expect(!isBold(at: 15))
+        #expect((storage.attribute(.paragraphStyle, at: 15, effectiveRange: nil) as? NSParagraphStyle)?.alignment == .right)
+        #expect(editor.markdown == "| Name    | Count |\n| ------- | ----: |\n| **one** | 1     |\n")
+    }
+
+    @Test func tableButtonOffersColumnsAndIsNextToTheLinkButton() {
+        #expect(EditorViewController.tableMenu().items.map(\.tag) == Array(1...8))
+        #expect(editor.tableButton.superview === editor.headerView)
+        #expect(editor.tableButton.action == #selector(EditorViewController.showTableMenu(_:)))
+    }
+
+    @Test func insertsATableWithTheCaretInTheFirstCell() {
+        insertTable(columns: 3)
+        #expect(textView.string == "\n\n\n\n\n\n")
+        #expect(textView.selectedRange() == NSRange(location: 0, length: 0))
+        #expect(cell(at: 5)! == (1, 2))
+        #expect(editor.markdown == "|     |     |     |\n| --- | --- | --- |\n|     |     |     |\n")
+        type("Name")
+        #expect(isBold(at: 0) && cell(at: 0)! == (0, 0))
+        #expect(editor.markdown.hasPrefix("| Name |     |     |\n| ---- |"))
+        #expect(!editor.stylePopUp.isEnabled)
+    }
+
+    @Test func insertsBelowALineWithText() {
+        editor.load(markdown: "Intro\nAfter")
+        textView.setSelectedRange(NSRange(location: 2, length: 0))
+        insertTable(columns: 1)
+        #expect(textView.string == "Intro\n\n\nAfter")
+        #expect(editor.markdown == "Intro\n|     |\n| --- |\n|     |\nAfter")
+        document.undoManager?.undo()
+        #expect(textView.string == "Intro\nAfter")
+    }
+
+    @Test func tabMovesBetweenCellsAndAddsARowAtTheEnd() {
+        insertTable(columns: 2)
+        for text in ["A", "B", "1", "2"] {
+            type(text)
+            press(#selector(NSResponder.insertTab(_:)))
+        }
+        type("3")
+        #expect(editor.markdown == "| A   | B   |\n| --- | --- |\n| 1   | 2   |\n| 3   |     |\n")
+    }
+
+    @Test func shiftTabSelectsThePreviousCell() {
+        editor.load(markdown: "| a | b |\n|---|---|\n| c | d |")
+        textView.setSelectedRange(NSRange(location: 4, length: 0))  // "|c"
+        press(#selector(NSResponder.insertBacktab(_:)))
+        #expect(selectedText == "b")
+        press(#selector(NSResponder.insertBacktab(_:)))
+        press(#selector(NSResponder.insertBacktab(_:)))
+        #expect(selectedText == "a")
+    }
+
+    @Test func returnAddsARowAndInAnEmptyLastRowEndsTheTable() {
+        editor.load(markdown: "| a |\n|---|\n| b |")
+        press(#selector(NSResponder.insertNewline(_:)))
+        #expect(editor.markdown == "| a   |\n| --- |\n|     |\n| b   |\n")
+        #expect(textView.selectedRange().location == 2)
+        document.undoManager?.undo()
+        #expect(textView.string == "a\nb\n")
+        textView.setSelectedRange(NSRange(location: 3, length: 0))
+        press(#selector(NSResponder.insertNewline(_:)))
+        press(#selector(NSResponder.insertNewline(_:)))
+        type("Text")
+        #expect(editor.tableBlock(at: 4) == nil)
+        #expect(editor.markdown == "| a   |\n| --- |\n| b   |\nText\n")
+    }
+
+    @Test func cellsCannotBeMergedOrSplit() {
+        editor.load(markdown: "Intro\n| a | b |\n|-|-|")
+        textView.setSelectedRange(NSRange(location: 8, length: 0))  // "|b"
+        step { textView.deleteBackward(nil) }
+        textView.setSelectedRange(NSRange(location: 6, length: 0))  // "|a"
+        step { textView.deleteBackward(nil) }
+        #expect(textView.string == "Intro\na\nb\n")
+        textView.setSelectedRange(NSRange(location: 7, length: 0))
+        step { textView.insertText("x\ny", replacementRange: textView.selectedRange()) }
+        #expect(textView.string == "Intro\nax y\nb\n")
+    }
+
+    @Test func deletingAcrossCellsEmptiesThem() {
+        editor.load(markdown: "| a | b |\n|-|-|\n| c | d |")
+        textView.setSelectedRange(NSRange(location: 2, length: 3))  // "b\nc"
+        step { textView.deleteBackward(nil) }
+        #expect(textView.string == "a\n\n\nd\n")
+        #expect(editor.markdown == "| a   |     |\n| --- | --- |\n|     | d   |\n")
+    }
+
+    @Test func deletingATableWithTheTextAroundItRemovesIt() {
+        editor.load(markdown: "Intro\n| a | b |\n|-|-|\nEnd")
+        textView.setSelectedRange(NSRange(location: 2, length: 8))  // "tro\na\nb\n"
+        step { textView.deleteBackward(nil) }
+        #expect(editor.markdown == "InEnd")
+    }
+
+    @Test func cellsTakeInlineStyles() {
+        editor.load(markdown: "| a | b |\n|-|-|")
+        textView.setSelectedRange(NSRange(location: 0, length: 1))
+        step { editor.toggleBold(nil) }
+        textView.setSelectedRange(NSRange(location: 2, length: 0))
+        type("*i* x")
+        #expect(editor.markdown == "| **a** | *i* xb |\n| ----- | ------ |\n")
+    }
+
+    @Test func typedOrPastedMarkdownTablesBecomeTables() {
+        type("| a | b |\n|---|---|\n")
+        #expect(textView.string == "a\nb\n\n\n")
+        #expect(cell(at: 4)! == (1, 0))
+        #expect(textView.selectedRange().location == 4)
+        #expect(editor.markdown == "| a   | b   |\n| --- | --- |\n|     |     |\n")
+
+        textView.setSelectedRange(NSRange(location: storage.length, length: 0))
+        step { textView.insertText("\n| x |\n| - |\n| 1 |\n", replacementRange: textView.selectedRange()) }
+        #expect(editor.markdown.hasSuffix("\n\n| x   |\n| --- |\n| 1   |\n"))
+    }
+
+    @Test func copyingATableWritesItsMarkdown() {
+        editor.load(markdown: "Intro\n" + Self.sample)
+        textView.setSelectedRange(NSRange(location: 0, length: storage.length))
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("MarkupTableTests-\(UUID().uuidString)"))
+        _ = textView.writeSelection(to: pasteboard, type: .string)
+        #expect(pasteboard.string(forType: .string) == "Intro\n| Name    | Count |\n| ------- | ----: |\n| **one** | 1     |\n")
+        textView.setSelectedRange(NSRange(location: 6, length: 2))
+        _ = textView.writeSelection(to: pasteboard, type: .string)
+        #expect(pasteboard.string(forType: .string) == "Na")
+    }
+
+    @Test func switchingViewsKeepsTheCaretInItsRow() {
+        editor.load(markdown: "Intro\n| a | b |\n|-|-|\n| c | d |\nEnd")
+        textView.setSelectedRange(NSRange(location: 12, length: 0))  // "|d"
+        editor.setShowingMarkdown(true)
+        #expect(textView.string == "Intro\n| a   | b   |\n| --- | --- |\n| c   | d   |\nEnd")
+        #expect(textView.selectedRange().location == 34)
+        textView.setSelectedRange(NSRange(location: textView.string.utf16.count - 1, length: 0))  // "En|d"
+        editor.setShowingMarkdown(false)
+        #expect(textView.selectedRange().location == 16)
+    }
+
+    @Test func printsTheGrid() throws {
+        editor.load(markdown: Self.sample)
+        let printed = try #require((try document.printOperation(withSettings: [:]).view as? NSTextView)?.textStorage)
+        #expect(printed.string == "Name\nCount\none\n1\n")
+        #expect((printed.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle)?.textBlocks.isEmpty == false)
+    }
+
+    @Test func tableButtonIsOffInTheMarkdownView() {
+        editor.setShowingMarkdown(true)
+        #expect(!editor.tableButton.isEnabled)
+        let item = NSMenuItem(title: "2 Columns", action: #selector(EditorViewController.insertTable(_:)), keyEquivalent: "")
+        #expect(!editor.validateMenuItem(item))
     }
 }

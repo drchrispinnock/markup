@@ -2,8 +2,9 @@ import AppKit
 import MarkupCore
 
 /// Switching between the formatted text and the raw Markdown. Both views have
-/// one line per Markdown line, and the conversion is lossless, so switching
-/// keeps the caret on the same line, the same distance from its end.
+/// one line per Markdown line, except for tables, which are one line per cell
+/// in the formatted text, so switching keeps the caret on the same line, the
+/// same distance from its end.
 extension EditorViewController {
     static let markdownAttributes: [NSAttributedString.Key: Any] = [
         .font: NSFont.monospacedSystemFont(ofSize: 14, weight: .regular),
@@ -21,7 +22,7 @@ extension EditorViewController {
     }
 
     func setShowingMarkdown(_ showMarkdown: Bool) {
-        guard showMarkdown != isShowingMarkdown else { return }
+        guard showMarkdown != isShowingMarkdown, !isPlainText else { return }
         let caret = caretPosition()
         let markdown = self.markdown
 
@@ -41,6 +42,7 @@ extension EditorViewController {
         stylePopUp.isEnabled = !showMarkdown
         imageButton.isEnabled = !showMarkdown
         linkButton.isEnabled = !showMarkdown
+        tableButton.isEnabled = !showMarkdown
         for style in InlineStyle.allCases {
             button(for: style)?.isEnabled = !showMarkdown
         }
@@ -49,35 +51,90 @@ extension EditorViewController {
         view.window?.makeFirstResponder(textView)
     }
 
-    /// The caret's line number, and its distance from the end of the line.
-    /// Only the start of a line differs between the views, so the distance
-    /// from the end points at the same text in both.
+    /// The caret's Markdown line number, and its distance from the end of
+    /// the line. Only the start of a line differs between the views, so the
+    /// distance from the end points at the same text in both. In a table the
+    /// caret goes to the start of its row or cell.
     private func caretPosition() -> (line: Int, fromEnd: Int) {
         let caret = textView.selectedRange().location
-        let string = storage.string as NSString
-        var line = 0
-        var location = 0
-        while location < caret {
-            let newline = string.range(of: "\n", range: NSRange(location: location, length: caret - location))
-            guard newline.location != NSNotFound else { break }
-            line += 1
-            location = NSMaxRange(newline)
+        let fromEnd = NSMaxRange(contentsRange(of: lineRange(at: caret))) - caret
+        guard !isShowingMarkdown else {
+            let string = storage.string as NSString
+            var line = 0
+            var location = 0
+            while location < caret {
+                let newline = string.range(of: "\n", range: NSRange(location: location, length: caret - location))
+                guard newline.location != NSNotFound else { break }
+                line += 1
+                location = NSMaxRange(newline)
+            }
+            return (line, fromEnd)
         }
-        return (line, NSMaxRange(contentsRange(of: lineRange(at: caret))) - caret)
+        let lines = markdownLineNumbers()
+        let found = lines.last { $0.line.location <= caret } ?? (NSRange(location: 0, length: 0), 0)
+        return (found.markdownLine, isTableLine(found.line) ? Int.max : fromEnd)
     }
 
     private func moveCaret(to position: (line: Int, fromEnd: Int)) {
         let string = storage.string as NSString
         var location = 0
-        for _ in 0..<position.line {
-            let newline = string.range(of: "\n", range: NSRange(location: location, length: string.length - location))
-            guard newline.location != NSNotFound else { break }
-            location = NSMaxRange(newline)
+        if isShowingMarkdown {
+            for _ in 0..<position.line {
+                let newline = string.range(of: "\n", range: NSRange(location: location, length: string.length - location))
+                guard newline.location != NSNotFound else { break }
+                location = NSMaxRange(newline)
+            }
+        } else {
+            // The first line showing that Markdown line, or for a table's
+            // delimiter row, the header.
+            let lines = markdownLineNumbers()
+            let line = lines.last { $0.markdownLine <= position.line }?.markdownLine
+            location = lines.first { $0.markdownLine == line }?.line.location ?? 0
         }
         let contents = contentsRange(of: lineRange(at: location))
-        let caret = max(contents.location, NSMaxRange(contents) - position.fromEnd)
+        let caret = isTableLine(lineRange(at: location)) ? contents.location
+            : max(contents.location, NSMaxRange(contents) - min(position.fromEnd, contents.length))
         textView.setSelectedRange(NSRange(location: caret, length: 0))
         textView.scrollRangeToVisible(textView.selectedRange())
+    }
+
+    /// Each line of the formatted text, with the number of the Markdown line
+    /// it starts. A table's cells have their row's line, after the header's
+    /// delimiter row, and tables next to each other have a blank line
+    /// between them in the Markdown.
+    private func markdownLineNumbers() -> [(line: NSRange, markdownLine: Int)] {
+        var lines: [(line: NSRange, markdownLine: Int)] = []
+        var markdownLine = 0
+        var location = 0
+        var previousWasTable = false
+        while location < storage.length {
+            let line = lineRange(at: location)
+            if isTableLine(line) {
+                if previousWasTable { markdownLine += 1 }
+                let cells = tableLines(around: line)
+                let columns = max(1, tableBlock(at: line.location)?.table.numberOfColumns ?? 1)
+                for (index, cell) in cells.enumerated() {
+                    let row = index / columns
+                    lines.append((cell, markdownLine + (row == 0 ? 0 : row + 1)))
+                }
+                markdownLine += (cells.count + columns - 1) / columns + 1
+                location = NSMaxRange(cells.last!)
+                previousWasTable = true
+            } else {
+                lines.append((line, markdownLine))
+                markdownLine += 1
+                location = NSMaxRange(line)
+                previousWasTable = false
+            }
+        }
+        if storage.length == 0 || string(endsWithNewline: storage) {
+            lines.append((NSRange(location: storage.length, length: 0), markdownLine))
+        }
+        return lines
+    }
+
+    private func string(endsWithNewline text: NSTextStorage) -> Bool {
+        text.length > 0 && (text.string as NSString).character(at: text.length - 1) == 0x0A
     }
 }
 
@@ -86,6 +143,9 @@ extension EditorViewController: NSMenuItemValidation {
         switch menuItem.action {
         case #selector(toggleMarkdown(_:)):
             menuItem.state = isShowingMarkdown ? .on : .off
+            return !isPlainText
+        case #selector(reloadImages(_:)):
+            return !isShowingMarkdown
         case #selector(toggleBold(_:)):
             menuItem.state = boldButton.state
             return !isShowingMarkdown
@@ -100,6 +160,8 @@ extension EditorViewController: NSMenuItemValidation {
             return !isShowingMarkdown
         case #selector(toggleHighlight(_:)):
             menuItem.state = isOn(.highlight) ? .on : .off
+            return !isShowingMarkdown
+        case #selector(insertTable(_:)):
             return !isShowingMarkdown
         case #selector(editLink(_:)):
             return !isShowingMarkdown
