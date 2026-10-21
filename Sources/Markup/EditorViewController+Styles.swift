@@ -86,6 +86,8 @@ extension EditorViewController {
             emptyLineStyle = nil
         }
         var attributes = style.attributes.withInlineStyles(inlineStyles, link: link)
+        // Typing keeps the line's ID.
+        attributes[.headingAnchor] = headingAnchor(in: line)
         if style == .table, line.length > 0 {
             // Typing stays in the cell.
             var cell = style.attributes

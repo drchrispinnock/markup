@@ -42,6 +42,7 @@ extension EditorViewController {
         stylePopUp.isEnabled = !showMarkdown
         imageButton.isEnabled = !showMarkdown
         linkButton.isEnabled = !showMarkdown
+        crossLinkButton.isEnabled = !showMarkdown
         tableButton.isEnabled = !showMarkdown
         for style in InlineStyle.allCases {
             button(for: style)?.isEnabled = !showMarkdown
@@ -163,7 +164,7 @@ extension EditorViewController: NSMenuItemValidation {
             return !isShowingMarkdown
         case #selector(insertTable(_:)):
             return !isShowingMarkdown
-        case #selector(editLink(_:)):
+        case #selector(editLink(_:)), #selector(insertCrossLink(_:)):
             return !isShowingMarkdown
         case #selector(toggleSubscript(_:)):
             menuItem.state = subscriptButton.state

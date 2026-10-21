@@ -1,4 +1,5 @@
 import AppKit
+import MarkupCore
 
 /// A Markdown file. The Objective-C name matches `NSDocumentClass` in Info.plist.
 ///
@@ -17,7 +18,7 @@ final class MarkdownDocument: NSDocument {
     /// `.markdown` files are Markdown. New documents are Markdown.
     private(set) var isPlainText = false
 
-    static let markdownExtensions: Set<String> = ["md", "markdown"]
+    nonisolated static let markdownExtensions: Set<String> = ["md", "markdown"]
 
     /// The project window this document is shown in, if any.
     weak var project: ProjectWindowController?
@@ -56,6 +57,45 @@ final class MarkdownDocument: NSDocument {
         editorIfLoaded?.markdown ?? markdown
     }
 
+    // Headings get their IDs before the save starts, so the document isn't
+    // left edited by IDs added in the Markdown view.
+    override func save(to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType,
+                       completionHandler: @escaping (Error?) -> Void) {
+        addMissingHeadingIDs(fileName: url.lastPathComponent)
+        super.save(to: url, ofType: typeName, for: saveOperation, completionHandler: completionHandler)
+    }
+
+    /// Gives every heading without an ID a new one, as set in `Settings`,
+    /// unlike any other ID in the project's files.
+    func addMissingHeadingIDs(fileName: String?) {
+        let settings = editorIfLoaded?.settings ?? .shared
+        guard !isPlainText, settings.addsHeadingIDs else { return }
+        editor.addMissingHeadingIDs(scheme: settings.headingIDScheme, form: settings.headingIDForm,
+                                    fileName: fileName, taken: idsInOtherFiles())
+    }
+
+    /// The ID of the document's heading number `index` (counting from 0),
+    /// given one first if it has none (as `settings` say, whether or not
+    /// saving adds them), which leaves the document edited.
+    func headingID(at index: Int, settings: Settings) -> String? {
+        let headings = editor.headings
+        guard headings.indices.contains(index) else { return nil }
+        if let id = headings[index].anchor?.id { return id }
+        editor.addMissingHeadingIDs(scheme: settings.headingIDScheme, form: settings.headingIDForm,
+                                    fileName: fileURL?.lastPathComponent, taken: idsInOtherFiles(), onlyHeading: index)
+        // In the Formatted view the ID is an attribute, which isn't an edit.
+        if !editor.isShowingMarkdown { updateChangeCount(.changeDone) }
+        return editor.headings[index].anchor?.id
+    }
+
+    /// The heading IDs in the project's other Markdown files.
+    private func idsInOtherFiles() -> Set<String> {
+        let own = fileURL?.standardizedFileURL
+        return Set((project?.markdownFiles() ?? []).filter { $0.url != own }.flatMap { file in
+            MarkdownCodec.lines(fromMarkdown: file.markdown).compactMap { $0.isHeading ? $0.anchor?.id : nil }
+        })
+    }
+
     override func data(ofType typeName: String) throws -> Data {
         Data(currentMarkdown.utf8)
     }
@@ -63,7 +103,11 @@ final class MarkdownDocument: NSDocument {
     // Decided by the extension rather than the type, because another app's
     // type for .md files reaches here as plain text.
     override func read(from url: URL, ofType typeName: String) throws {
-        isPlainText = !Self.markdownExtensions.contains(url.pathExtension.lowercased())
+        let isPlainText = !Self.markdownExtensions.contains(url.pathExtension.lowercased())
+        // On the main thread, as for read(from:ofType:) with data below.
+        MainActor.assumeIsolated {
+            self.isPlainText = isPlainText
+        }
         try super.read(from: url, ofType: typeName)
     }
 

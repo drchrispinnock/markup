@@ -11,6 +11,9 @@ extension NSAttributedString.Key {
     static let codeFence = NSAttributedString.Key("MarkupCodeFence")
     /// True on every character of a table's header cells, which are bold.
     static let tableHeader = NSAttributedString.Key("MarkupTableHeader")
+    /// A heading's ID (`HeadingAnchor`), on every character of the line. It
+    /// isn't shown, and only a heading writes it.
+    static let headingAnchor = NSAttributedString.Key("MarkupHeadingAnchor")
 }
 
 extension BlockStyle {

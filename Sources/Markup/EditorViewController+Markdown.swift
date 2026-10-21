@@ -47,6 +47,7 @@ extension EditorViewController {
                 text.append(NSAttributedString(string: line.text + terminator, attributes: attributes))
             } else {
                 var attributes = line.style.attributes
+                attributes[.headingAnchor] = line.anchor
                 // A line of only comments is hidden altogether.
                 let comments = HTMLComment.ranges(in: line.text)
                 if !comments.isEmpty, comments.reduce(0, { $0 + $1.count }) == line.text.utf16.count {
@@ -115,7 +116,7 @@ extension EditorViewController {
                                   fence: startsBlock ? fence ?? CodeFence() : nil))
             } else {
                 let style = line.length > 0 ? storage.blockStyle(at: line.location) : .paragraph
-                lines.append(Line(style: style, text: inlineMarkdown(in: contents)))
+                lines.append(Line(style: style, text: inlineMarkdown(in: contents), anchor: headingAnchor(in: line)))
             }
             location = NSMaxRange(line)
         } while location < string.length

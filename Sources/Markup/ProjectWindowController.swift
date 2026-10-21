@@ -112,10 +112,7 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
             sidebar.select(currentDocument?.fileURL)
             return
         }
-        document.project = self
-        if !documents.contains(where: { $0 === document }) {
-            documents.append(document)
-        }
+        adopt(document)
 
         if currentDocument !== document {
             currentDocument?.editorIfLoaded?.removeFromParent()
@@ -137,6 +134,14 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
         window?.makeFirstResponder(document.editor.textView)
         sidebar.select(document.fileURL)
         updateTitle()
+    }
+
+    /// Makes `document` one of the window's, without showing it.
+    func adopt(_ document: MarkdownDocument) {
+        document.project = self
+        if !documents.contains(where: { $0 === document }) {
+            documents.append(document)
+        }
     }
 
     private func updateTitle() {

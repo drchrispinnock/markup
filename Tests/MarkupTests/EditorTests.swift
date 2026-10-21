@@ -1418,7 +1418,7 @@ import Testing
     @Test func linkButtonIsLeftOfTheImageButton() {
         editor.view.window!.layoutIfNeeded()
         #expect(editor.linkButton.frame.maxX < editor.imageButton.frame.minX)
-        #expect(editor.linkButton.frame.minX > editor.superscriptButton.frame.maxX + 50)
+        #expect(editor.linkButton.frame.minX > editor.superscriptButton.frame.maxX + 16)
     }
 
     @Test func subscriptAndSuperscriptButtonsAreLaidOutAfterCode() {

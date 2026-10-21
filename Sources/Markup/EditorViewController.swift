@@ -34,6 +34,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         target: nil, action: nil)
     let linkButton = NSButton(image: NSImage(systemSymbolName: "link", accessibilityDescription: "Link")!,
                               target: nil, action: nil)
+    let crossLinkButton = NSButton(image: NSImage(systemSymbolName: "bookmark", accessibilityDescription: "Cross Link")!,
+                                   target: nil, action: nil)
     let tableButton = NSButton(image: NSImage(systemSymbolName: "tablecells", accessibilityDescription: "Insert Table")!,
                                target: nil, action: nil)
     let imageButton = NSButton(image: NSImage(systemSymbolName: "photo", accessibilityDescription: "Insert Image")!,
@@ -112,6 +114,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         linkButton.action = #selector(editLink(_:))
         linkButton.toolTip = "Link (⌘K)"
 
+        crossLinkButton.target = self
+        crossLinkButton.action = #selector(insertCrossLink(_:))
+        crossLinkButton.toolTip = "Cross Link to a Heading (⇧⌘K)"
+
         tableButton.target = self
         tableButton.action = #selector(insertTable(_:))
         tableButton.toolTip = "Insert Table"
@@ -139,7 +145,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             contentView.addSubview(view)
         }
         for control in [stylePopUp, boldButton, italicButton, strikethroughButton, codeButton, subscriptButton, superscriptButton,
-                        linkButton, tableButton, imageButton, viewModeControl] {
+                        linkButton, crossLinkButton, tableButton, imageButton, viewModeControl] {
             control.translatesAutoresizingMaskIntoConstraints = false
             control.isHidden = plainText
             headerView.addSubview(control)
@@ -171,8 +177,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             superscriptButton.leadingAnchor.constraint(equalTo: subscriptButton.trailingAnchor, constant: 4),
             superscriptButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
 
-            linkButton.trailingAnchor.constraint(equalTo: tableButton.leadingAnchor, constant: -4),
+            linkButton.trailingAnchor.constraint(equalTo: crossLinkButton.leadingAnchor, constant: -4),
             linkButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+            crossLinkButton.trailingAnchor.constraint(equalTo: tableButton.leadingAnchor, constant: -4),
+            crossLinkButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
             tableButton.trailingAnchor.constraint(equalTo: imageButton.leadingAnchor, constant: -4),
             tableButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
             imageButton.trailingAnchor.constraint(equalTo: viewModeControl.leadingAnchor, constant: -8),
@@ -420,7 +428,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
                     // fence.
                     let fence = style == .code ? storage.attribute(.codeFence, at: line.location, effectiveRange: nil) as? CodeFence : nil
                     let hasInlineStyles = style == .code && NSAttributedString.Key.inlineFormatting.contains { contains($0, in: line) }
+                    // The whole line has the ID that any of it has.
+                    let anchor = headingAnchor(in: line)
                     if !hasUniform(.blockStyle, style.rawValue, in: line) || contains(.listLevel, in: line)
+                        || !hasUniformAnchor(anchor, in: line)
                         || !hasUniformFence(fence, in: line) || hasInlineStyles
                         || !hasUniformPresence(.tableHeader, isHeader, in: line)
                         || (cell != nil && !hasUniformParagraphStyle(cell!, in: line)) {
@@ -435,6 +446,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
                             storage.removeAttribute(.listLevel, range: line)
                             storage.removeAttribute(.codeFence, range: line)
                             if let fence { storage.addAttribute(.codeFence, value: fence, range: line) }
+                            if let anchor { storage.addAttribute(.headingAnchor, value: anchor, range: line) }
                             if style == .code {
                                 for key in NSAttributedString.Key.inlineFormatting {
                                     storage.removeAttribute(key, range: line)
@@ -446,6 +458,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
                 }
             }
             updateTables(in: editedRange)
+            keepHeadingAnchorsSingle(around: editedRange)
         }
     }
 
@@ -475,6 +488,17 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         var isUniform = true
         storage.enumerateAttribute(key, in: range) { found, _, stop in
             if (found as? Int) != value {
+                isUniform = false
+                stop.pointee = true
+            }
+        }
+        return isUniform
+    }
+
+    private func hasUniformAnchor(_ anchor: HeadingAnchor?, in range: NSRange) -> Bool {
+        var isUniform = true
+        storage.enumerateAttribute(.headingAnchor, in: range) { found, _, stop in
+            if found as? HeadingAnchor != anchor {
                 isUniform = false
                 stop.pointee = true
             }

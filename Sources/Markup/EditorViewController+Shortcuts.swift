@@ -13,6 +13,8 @@ extension EditorViewController {
     /// - "![alt](path)" anywhere in a line becomes the image.
     /// - "[text](destination)" anywhere in a line becomes a link.
     /// - "<!-- comment -->" anywhere in a line is hidden.
+    /// - "{#id: x}" or "{#x}" alone on the line above a heading becomes the
+    ///   heading's ID.
     ///
     /// Lines of code blocks, and inline code, are left as typed.
     ///
@@ -37,11 +39,23 @@ extension EditorViewController {
                 location = NSMaxRange(line)
                 continue
             }
+            // An ID typed or pasted above a heading becomes its ID.
+            if NSIntersectionRange(line, edit).length > 0 || NSLocationInRange(edit.location, line),
+               convertAnchorLine(line) {
+                continue
+            }
             if isTableLine(line) {
                 // A cell can't be a heading or list item.
             } else if let item = listItem(at: line) {
                 convertTaskPrefix(of: line, item: item, after: edit)
-            } else if !convertHeadingPrefix(of: line, after: edit) {
+            } else if convertHeadingPrefix(of: line, after: edit) || (edit.location == line.location && isHeadingLine(line)) {
+                // A heading just made, or just given its first character
+                // (on an empty last line), takes an ID typed above it.
+                if line.location > 0, case let above = lineRange(at: line.location - 1), convertAnchorLine(above) {
+                    location = above.location
+                    continue
+                }
+            } else {
                 convertListPrefix(of: line, after: edit)
             }
             convertEmphasis(in: lineRange(at: location), after: edit)

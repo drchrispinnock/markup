@@ -1,18 +1,24 @@
 /// One line of a document: its text without any Markdown heading or list
 /// marker, its style, and its list item if it is one. List items are always
-/// paragraph style. The first line of a code block has the block's fence.
+/// paragraph style. The first line of a code block has the block's fence. A
+/// heading can have an ID (its anchor), which only headings write.
 public struct Line: Equatable, Sendable {
     public var style: BlockStyle
     public var text: String
     public var list: ListItem?
     public var fence: CodeFence?
+    public var anchor: HeadingAnchor?
 
-    public init(style: BlockStyle, text: String, list: ListItem? = nil, fence: CodeFence? = nil) {
+    public init(style: BlockStyle, text: String, list: ListItem? = nil, fence: CodeFence? = nil,
+                anchor: HeadingAnchor? = nil) {
         self.style = style
         self.text = text
         self.list = list
         self.fence = fence
+        self.anchor = anchor
     }
+
+    public var isHeading: Bool { style.rawValue > 0 && list == nil }
 }
 
 /// The opening fence of a code block: its number of backticks and the info
@@ -49,11 +55,15 @@ public struct CodeFence: Hashable, Sendable {
 ///   kept exactly as they are. A fence with no lines before its closing
 ///   line, or none at all, is text.
 /// - A table (`MarkdownTable`) is table lines, kept exactly as they are.
+/// - A heading's ID (`HeadingAnchor`) is `{#id: x}` or `{#x}` on the line
+///   above it, or `{#x}` at its end, but not both: a heading with one at its
+///   end leaves the line above as text.
 ///
 /// Text that would otherwise read back as one of these is escaped with a
 /// backslash, so it survives a save: a paragraph "# not a heading" is written
 /// as "\# not a heading", and a bullet "[ ] not a task" as "- \[ ] not a task".
-/// A paragraph that would open a code block is escaped the same way.
+/// A paragraph that would open a code block, or be a heading's ID, is
+/// escaped the same way, and so is a heading ending in what would be its ID.
 ///
 /// An HTML comment that starts on one line and ends on a later one stays
 /// part of the line it starts on, so that line's text holds newlines.
@@ -78,8 +88,18 @@ public enum MarkdownCodec {
                 index += rows
                 continue
             }
+            if HeadingAnchor(line: raw[index]) != nil, index + 1 < raw.count,
+               var heading = structuredLine(raw[index + 1]), heading.isHeading, heading.anchor == nil {
+                heading.anchor = HeadingAnchor(line: raw[index])
+                lines.append(heading)
+                index += 2
+                continue
+            }
             let text = raw[index]
-            if text.first == "\\", let fence = CodeFence(line: text.drop(while: { $0 == "\\" })),
+            if text.first == "\\", HeadingAnchor(line: text.drop(while: { $0 == "\\" })) != nil, index + 1 < raw.count,
+               attachesAnchorAbove(raw[index + 1]) {
+                lines.append(Line(style: .paragraph, text: String(text.dropFirst())))
+            } else if text.first == "\\", let fence = CodeFence(line: text.drop(while: { $0 == "\\" })),
                closingFence(of: fence, in: raw, after: index) != nil {
                 lines.append(Line(style: .paragraph, text: String(text.dropFirst())))
             } else {
@@ -105,6 +125,9 @@ public enum MarkdownCodec {
         var index = 0
         while index < lines.count {
             guard lines[index].style == .code else {
+                if lines[index].isHeading, let anchor = lines[index].anchor, anchor.form != .attribute {
+                    written.append((anchor.markdown, false))
+                }
                 written.append((markdown(from: lines[index]), lines[index].style == .paragraph && lines[index].list == nil))
                 index += 1
                 continue
@@ -122,11 +145,15 @@ public enum MarkdownCodec {
             written.append((marker, false))
             index = end
         }
-        // Escape paragraphs that would read back as opening a code block,
-        // working up so each sees the lines below as they will be written.
+        // Escape paragraphs that would read back as opening a code block, or
+        // as the ID of a heading below, working up so each sees the lines
+        // below as they will be written.
         var texts = written.map(\.text)
         for index in written.indices.reversed() where written[index].isParagraph {
-            if let fence = CodeFence(line: texts[index].drop(while: { $0 == "\\" })),
+            if HeadingAnchor(line: texts[index].drop(while: { $0 == "\\" })) != nil, index + 1 < texts.count,
+               attachesAnchorAbove(Substring(texts[index + 1])) {
+                texts[index] = "\\" + texts[index]
+            } else if let fence = CodeFence(line: texts[index].drop(while: { $0 == "\\" })),
                closingFence(of: fence, in: texts.map { Substring($0) }, after: index) != nil {
                 texts[index] = "\\" + texts[index]
             }
@@ -183,10 +210,22 @@ public enum MarkdownCodec {
         return Line(style: .paragraph, text: String(raw))
     }
 
-    /// The heading or list item that `raw` is, or nil for a paragraph.
+    /// Whether `raw` is a heading that takes an ID from the line above: one
+    /// without one at its end.
+    private static func attachesAnchorAbove(_ raw: Substring) -> Bool {
+        guard let line = structuredLine(raw) else { return false }
+        return line.isHeading && line.anchor == nil
+    }
+
+    /// The heading or list item that `raw` is, or nil for a paragraph. A
+    /// heading's text loses the ID at its end, if it has one.
     private static func structuredLine(_ raw: Substring) -> Line? {
         if let level = headingLevel(of: raw), let style = BlockStyle(rawValue: level) {
-            return Line(style: style, text: String(raw.dropFirst(level + 1)))
+            let text = String(raw.dropFirst(level + 1))
+            if let trailing = HeadingAnchor.trailing(in: text) {
+                return Line(style: style, text: trailing.text, anchor: trailing.anchor)
+            }
+            return Line(style: style, text: HeadingAnchor.unescapingTrailing(text))
         }
         if let prefix = listPrefix(of: raw) {
             var text = raw.dropFirst(prefix.length)
@@ -213,7 +252,12 @@ public enum MarkdownCodec {
             return needsEscape ? String(spaces) + "\\" + rest : line.text
         }
         let marker = String(repeating: "#", count: line.style.rawValue)
-        return line.text.isEmpty ? marker : marker + " " + line.text
+        // Text ending as an ID would be read as one, unless an ID follows.
+        if let anchor = line.anchor, anchor.form == .attribute {
+            return marker + " " + (line.text.isEmpty ? "" : line.text + " ") + anchor.markdown
+        }
+        let text = HeadingAnchor.trailingNeedsEscape(line.text) ? HeadingAnchor.escapingTrailing(line.text) : line.text
+        return text.isEmpty ? marker : marker + " " + text
     }
 
     /// The level of a heading marker at the start of `text`: one to three `#`

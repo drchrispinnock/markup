@@ -63,6 +63,8 @@ enum MainMenu {
                            keyEquivalent: "H")
         formatMenu.addItem(.separator())
         formatMenu.addItem(withTitle: "Link…", action: #selector(EditorViewController.editLink(_:)), keyEquivalent: "k")
+        formatMenu.addItem(withTitle: "Cross Link…", action: #selector(EditorViewController.insertCrossLink(_:)),
+                           keyEquivalent: "K")
         formatMenu.addItem(withTitle: "Table…", action: #selector(EditorViewController.insertTable(_:)), keyEquivalent: "")
         mainMenu.addItem(submenu: formatMenu, title: "Format")
 

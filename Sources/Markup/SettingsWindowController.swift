@@ -1,4 +1,5 @@
 import AppKit
+import MarkupCore
 
 /// Markup > Settings.
 @MainActor
@@ -6,6 +7,28 @@ final class SettingsWindowController: NSWindowController {
     let settings: Settings
     let imagesDirectoryControl = NSPathControl()
     let clearButton = NSButton(title: "Clear", target: nil, action: nil)
+    let addsHeadingIDsCheckbox = NSButton(checkboxWithTitle: "Give headings an ID when saving", target: nil, action: nil)
+    let headingIDFormPopUp = NSPopUpButton()
+    let headingIDSchemePopUp = NSPopUpButton()
+    let crossFileLinksPopUp = NSPopUpButton()
+
+    static let formTitles: [HeadingAnchor.Form: String] = [
+        .idLine: "{#id: x} above the heading",
+        .braceLine: "{#x} above the heading",
+        .attribute: "{#x} after the heading",
+    ]
+
+    static let crossFileLinkTitles: [Settings.CrossFileLinks: String] = [
+        .idOnly: "#id (as Leanpub needs)",
+        .withPath: "other.md#id",
+        .off: "Only headings in the same file",
+    ]
+
+    static let schemeTitles: [HeadingIDScheme: String] = [
+        .fileLevelWord: "File, level and first word (notes_2_Setting)",
+        .hash: "8-character hash (3f9a1c0b)",
+        .slug: "Heading in lower case (setting-up-my-dapp)",
+    ]
 
     init(settings: Settings) {
         self.settings = settings
@@ -32,12 +55,42 @@ final class SettingsWindowController: NSWindowController {
         note.textColor = .secondaryLabelColor
         note.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
 
+        addsHeadingIDsCheckbox.target = self
+        addsHeadingIDsCheckbox.action = #selector(headingIDsChanged(_:))
+        for form in HeadingAnchor.Form.allCases {
+            headingIDFormPopUp.addItem(withTitle: Self.formTitles[form]!)
+            headingIDFormPopUp.lastItem?.representedObject = form.rawValue
+        }
+        for scheme in HeadingIDScheme.allCases {
+            headingIDSchemePopUp.addItem(withTitle: Self.schemeTitles[scheme]!)
+            headingIDSchemePopUp.lastItem?.representedObject = scheme.rawValue
+        }
+        for links in Settings.CrossFileLinks.allCases {
+            crossFileLinksPopUp.addItem(withTitle: Self.crossFileLinkTitles[links]!)
+            crossFileLinksPopUp.lastItem?.representedObject = links.rawValue
+        }
+        for popUp in [headingIDFormPopUp, headingIDSchemePopUp, crossFileLinksPopUp] {
+            popUp.target = self
+            popUp.action = #selector(headingIDsChanged(_:))
+        }
+        let idNote = NSTextField(wrappingLabelWithString:
+            "Links to a heading use its ID, which is unique across the project. A cross link gives the heading "
+                + "one if it has none. IDs already in a file are kept; edit them in the Markdown view.")
+        idNote.textColor = .secondaryLabelColor
+        idNote.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+
         let buttons = NSStackView(views: [chooseButton, clearButton])
         let grid = NSGridView(views: [
             [label, imagesDirectoryControl],
             [NSGridCell.emptyContentView, buttons],
             [NSGridCell.emptyContentView, note],
+            [NSTextField(labelWithString: "Heading IDs:"), addsHeadingIDsCheckbox],
+            [NSTextField(labelWithString: "Write as:"), headingIDFormPopUp],
+            [NSTextField(labelWithString: "Make from:"), headingIDSchemePopUp],
+            [NSGridCell.emptyContentView, idNote],
+            [NSTextField(labelWithString: "Links to other files:"), crossFileLinksPopUp],
         ])
+        grid.row(at: 3).topPadding = 12
         grid.column(at: 0).xPlacement = .trailing
         grid.rowAlignment = .firstBaseline
         grid.rowSpacing = 8
@@ -55,6 +108,7 @@ final class SettingsWindowController: NSWindowController {
         ])
         window.contentView = contentView
         showImagesDirectory()
+        showHeadingIDs()
     }
 
     @available(*, unavailable)
@@ -82,6 +136,27 @@ final class SettingsWindowController: NSWindowController {
     func setImagesDirectory(_ url: URL?) {
         settings.imagesDirectory = url
         showImagesDirectory()
+    }
+
+    @objc func headingIDsChanged(_ sender: Any?) {
+        settings.addsHeadingIDs = addsHeadingIDsCheckbox.state == .on
+        if let form = (headingIDFormPopUp.selectedItem?.representedObject as? String).flatMap(HeadingAnchor.Form.init) {
+            settings.headingIDForm = form
+        }
+        if let scheme = (headingIDSchemePopUp.selectedItem?.representedObject as? String).flatMap(HeadingIDScheme.init) {
+            settings.headingIDScheme = scheme
+        }
+        if let links = (crossFileLinksPopUp.selectedItem?.representedObject as? String).flatMap(Settings.CrossFileLinks.init) {
+            settings.crossFileLinks = links
+        }
+        showHeadingIDs()
+    }
+
+    private func showHeadingIDs() {
+        addsHeadingIDsCheckbox.state = settings.addsHeadingIDs ? .on : .off
+        headingIDFormPopUp.selectItem(at: HeadingAnchor.Form.allCases.firstIndex(of: settings.headingIDForm)!)
+        headingIDSchemePopUp.selectItem(at: HeadingIDScheme.allCases.firstIndex(of: settings.headingIDScheme)!)
+        crossFileLinksPopUp.selectItem(at: Settings.CrossFileLinks.allCases.firstIndex(of: settings.crossFileLinks)!)
     }
 
     private func showImagesDirectory() {

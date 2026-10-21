@@ -1,4 +1,5 @@
 import Foundation
+import MarkupCore
 
 /// App-wide settings, kept in user defaults.
 @MainActor
@@ -7,6 +8,10 @@ final class Settings {
 
     static let imagesDirectoryKey = "MarkupImagesDirectory"
     static let openProjectsKey = "MarkupOpenProjects"
+    static let addsHeadingIDsKey = "MarkupAddsHeadingIDs"
+    static let headingIDFormKey = "MarkupHeadingIDForm"
+    static let headingIDSchemeKey = "MarkupHeadingIDScheme"
+    static let crossFileLinksKey = "MarkupCrossFileLinks"
 
     let defaults: UserDefaults
 
@@ -23,6 +28,45 @@ final class Settings {
         set {
             defaults.set(newValue?.path, forKey: Self.imagesDirectoryKey)
         }
+    }
+
+    /// Whether saving gives headings without an ID a new one. On unless
+    /// turned off.
+    var addsHeadingIDs: Bool {
+        get { defaults.object(forKey: Self.addsHeadingIDsKey) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Self.addsHeadingIDsKey) }
+    }
+
+    /// How new heading IDs are written: `{#id: x}` on the line above unless
+    /// changed.
+    var headingIDForm: HeadingAnchor.Form {
+        get { defaults.string(forKey: Self.headingIDFormKey).flatMap(HeadingAnchor.Form.init) ?? .idLine }
+        set { defaults.set(newValue.rawValue, forKey: Self.headingIDFormKey) }
+    }
+
+    /// How new heading IDs are made: from the file's name, the level and
+    /// the first word unless changed.
+    var headingIDScheme: HeadingIDScheme {
+        get { defaults.string(forKey: Self.headingIDSchemeKey).flatMap(HeadingIDScheme.init) ?? .fileLevelWord }
+        set { defaults.set(newValue.rawValue, forKey: Self.headingIDSchemeKey) }
+    }
+
+    /// How a cross link (Format > Cross Link) goes to a heading in another
+    /// file of the project.
+    enum CrossFileLinks: String, CaseIterable {
+        /// `#id` alone, as Leanpub needs: IDs are unique across the project.
+        case idOnly
+        /// `other.md#id`, the file's path from this one, as GitHub and most
+        /// previewers need.
+        case withPath
+        /// Only headings in the same file are offered.
+        case off
+    }
+
+    /// `idOnly` unless changed.
+    var crossFileLinks: CrossFileLinks {
+        get { defaults.string(forKey: Self.crossFileLinksKey).flatMap(CrossFileLinks.init) ?? .idOnly }
+        set { defaults.set(newValue.rawValue, forKey: Self.crossFileLinksKey) }
     }
 
     /// A project window open when the app last quit: its folder, and the
