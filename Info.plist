@@ -18,6 +18,10 @@
 	<string>1</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
+	<key>SUFeedURL</key>
+	<string>https://raw.githubusercontent.com/drchrispinnock/markup/main/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>XmCP3tuEj5i0fwDbOgZBQQCzpFNBKgPBZt7nqaaMMqg=</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>CFBundleDocumentTypes</key>

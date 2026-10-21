@@ -12,7 +12,8 @@ It is a Swift Package (no Xcode project), built with the Command Line Tools:
 
 - `swift build` builds the app.
 - `swift run` builds and launches it as a bare executable. Debug builds embed `img/Markup.png` in the executable's `__TEXT,__markup_icon` section (`Package.swift`), and `DevelopmentIcon` draws it as the app icon when there's no app bundle, cropped and clipped the way the icon script does it.
-- `scripts/build-app.sh` makes `build/Markup.app`: a release build, `Info.plist`, and `AppIcon.icns` generated from `img/Markup.png` by `scripts/make-icon.swift`, all ad-hoc signed. The icon script makes the artwork's white surround transparent and clips it to exactly an 824×824 rounded rect (radius 185) at (100, 100) on a 1024 canvas. macOS 26 shows any other outline shrunk onto a grey plate.
+- `scripts/build-app.sh` makes `build/Markup.app`: a release build, `Info.plist`, `Sparkle.framework` in `Contents/Frameworks`, and `AppIcon.icns` generated from `img/Markup.png` by `scripts/make-icon.swift`, all ad-hoc signed. The icon script makes the artwork's white surround transparent and clips it to exactly an 824×824 rounded rect (radius 185) at (100, 100) on a 1024 canvas. macOS 26 shows any other outline shrunk onto a grey plate.
+- `scripts/release.sh` makes a Sparkle release: the app zipped into `build/releases/<version>/`, and its entry added to `appcast.xml` (the feed, served from the repo's `main`), signed with the EdDSA key in the login keychain. The zip goes in a GitHub release tagged `v<version>`. Bump `CFBundleVersion` first; Sparkle compares it.
 - `swift test -Xswiftc -plugin-path -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing` runs all tests.
 - Add `--filter ListEditorTests/tabNestsAndShiftTabUnnests` to run a single test.
 
@@ -77,6 +78,10 @@ Markup > Settings (`SettingsWindowController`, opened by `AppDelegate.showSettin
 
 - **Heading IDs:** `addsHeadingIDs` (key `MarkupAddsHeadingIDs`, on by default), `headingIDForm` (`MarkupHeadingIDForm`, default `idLine`) and `headingIDScheme` (`MarkupHeadingIDScheme`, default `fileLevelWord`). They apply to new IDs only, including those cross links add. `crossFileLinks` (`MarkupCrossFileLinks`): `idOnly` (`#id`, as Leanpub needs; the default), `withPath` (`other.md#id`) or `off` (only the same file's headings).
 - **Images directory** (`imagesDirectory`, key `MarkupImagesDirectory`, a folder path or unset). Image paths are looked up in this folder first, then the document's own folder, then its `resources` and `images` subfolders (`Settings.imageFolders(forDocumentAt:)`).
+
+### Updates
+
+Markup > Check for Updates uses Sparkle (a package dependency; its tools, such as `generate_keys` and `generate_appcast`, are in `.build/artifacts/sparkle/Sparkle/bin`). `Updater` makes Sparkle's standard updater controller only in an app bundle whose `Info.plist` has a `SUPublicEDKey`; otherwise (`swift run`, tests) there is none and the menu item is disabled. The feed is `SUFeedURL`. The executable has the rpath `@executable_path/../Frameworks` for the bundle; `swift run` finds the framework next to it.
 
 ### Printing
 

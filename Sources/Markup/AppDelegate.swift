@@ -42,6 +42,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue == isFolder
     }
 
+    let updater = Updater()
+
+    /// Markup > Check for Updates.
+    @objc func checkForUpdates(_ sender: Any?) {
+        updater.checkForUpdates()
+    }
+
     private var settingsWindowController: SettingsWindowController?
 
     /// Markup > Settings.
@@ -80,5 +87,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         projects.append(project)
         project.showWindow(nil)
         return project
+    }
+}
+
+extension AppDelegate: NSMenuItemValidation {
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        menuItem.action == #selector(checkForUpdates(_:)) ? updater.canCheckForUpdates : true
     }
 }
