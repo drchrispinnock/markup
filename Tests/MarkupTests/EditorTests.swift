@@ -1881,8 +1881,10 @@ import Testing
     }
 
     private func insertTable(columns: Int) {
-        let item = EditorViewController.tableMenu().items.first { $0.tag == columns }!
-        step { editor.insertTable(item) }
+        let controller = editor.makeTableSizeController()
+        controller.loadView()
+        controller.columns = columns
+        step { controller.insert(nil) }
     }
 
     private func isBold(at location: Int) -> Bool {
@@ -1913,10 +1915,40 @@ import Testing
         #expect(editor.markdown == "| Name    | Count |\n| ------- | ----: |\n| **one** | 1     |\n")
     }
 
-    @Test func tableButtonOffersColumnsAndIsNextToTheLinkButton() {
-        #expect(EditorViewController.tableMenu().items.map(\.tag) == Array(1...8))
+    @Test func tableButtonIsNextToTheLinkButton() {
         #expect(editor.tableButton.superview === editor.headerView)
-        #expect(editor.tableButton.action == #selector(EditorViewController.showTableMenu(_:)))
+        #expect(editor.tableButton.action == #selector(EditorViewController.insertTable(_:)))
+    }
+
+    @Test func tablePopoverAsksForTheNumberOfColumns() {
+        var inserted: [Int] = []
+        let controller = TableSizeController(columns: 3) { inserted.append($0) }
+        controller.loadView()
+        #expect(controller.field.integerValue == 3 && controller.stepper.integerValue == 3)
+        controller.stepper.integerValue = 4
+        _ = controller.stepper.target?.perform(controller.stepper.action, with: controller.stepper)
+        #expect(controller.field.integerValue == 4)
+        let fieldEditor = NSTextView()
+        fieldEditor.string = "6"
+        #expect(controller.control(controller.field, textView: fieldEditor, doCommandBy: #selector(NSResponder.moveUp(_:))))
+        #expect(controller.columns == 7 && controller.stepper.integerValue == 7)
+        fieldEditor.string = "1"
+        #expect(controller.control(controller.field, textView: fieldEditor, doCommandBy: #selector(NSResponder.moveDown(_:))))
+        #expect(controller.columns == 1)
+        controller.columns = 99
+        #expect(controller.columns == 20)
+        controller.columns = 5
+        controller.insert(nil)
+        #expect(inserted == [5])
+        #expect(controller.insertButton.keyEquivalent == "\r")
+    }
+
+    @Test func tablePopoverRemembersTheLastNumberOfColumns() {
+        let saved = EditorViewController.tableColumns
+        defer { EditorViewController.tableColumns = saved }
+        insertTable(columns: 4)
+        #expect(EditorViewController.tableColumns == 4)
+        #expect(editor.makeTableSizeController().columns == 4)
     }
 
     @Test func insertsATableWithTheCaretInTheFirstCell() {
@@ -2056,7 +2088,7 @@ import Testing
     @Test func tableButtonIsOffInTheMarkdownView() {
         editor.setShowingMarkdown(true)
         #expect(!editor.tableButton.isEnabled)
-        let item = NSMenuItem(title: "2 Columns", action: #selector(EditorViewController.insertTable(_:)), keyEquivalent: "")
+        let item = NSMenuItem(title: "Table…", action: #selector(EditorViewController.insertTable(_:)), keyEquivalent: "")
         #expect(!editor.validateMenuItem(item))
     }
 }

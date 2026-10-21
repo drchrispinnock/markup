@@ -11,8 +11,8 @@ import MarkupCore
 /// between cells, and Return adds a row. Edits that would merge cells, or
 /// split one, aren't allowed.
 extension EditorViewController {
-    /// The numbers of columns a new table can have.
-    static let tableColumnChoices = 1...8
+    /// The number of columns the table popover suggests: the last chosen.
+    static var tableColumns = 3
 
     static let tableBorderColor = NSColor(name: nil) { appearance in
         appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? NSColor(white: 1, alpha: 0.25) : NSColor(white: 0, alpha: 0.25)
@@ -24,29 +24,19 @@ extension EditorViewController {
 
     // MARK: - Inserting
 
-    /// The sizes of table to insert. Each item's tag is its number of columns.
-    static func tableMenu() -> NSMenu {
-        let menu = NSMenu(title: "Table")
-        for columns in tableColumnChoices {
-            let item = menu.addItem(withTitle: columns == 1 ? "1 Column" : "\(columns) Columns",
-                                    action: #selector(insertTable(_:)), keyEquivalent: "")
-            item.tag = columns
-        }
-        return menu
-    }
-
-    /// The table button: shows the choice of columns below it.
-    @objc func showTableMenu(_ sender: NSButton) {
-        let menu = Self.tableMenu()
-        for item in menu.items {
-            item.target = self
-        }
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.isFlipped ? sender.bounds.maxY + 4 : -4), in: sender)
-    }
-
-    /// Inserts a table with the menu item's number of columns.
+    /// The table button and Format > Table: asks for the number of columns
+    /// in a popover below the button, then inserts the table.
     @objc func insertTable(_ sender: Any?) {
-        insertTable(columns: (sender as? NSMenuItem)?.tag ?? 2)
+        guard !isShowingMarkdown else { return }
+        present(makeTableSizeController(), asPopoverRelativeTo: tableButton.bounds, of: tableButton,
+                preferredEdge: tableButton.isFlipped ? .maxY : .minY, behavior: .transient)
+    }
+
+    func makeTableSizeController() -> TableSizeController {
+        TableSizeController(columns: Self.tableColumns) { [weak self] columns in
+            Self.tableColumns = columns
+            self?.insertTable(columns: columns)
+        }
     }
 
     /// Inserts an empty table of `columns` columns, a header and one row, on
@@ -384,5 +374,112 @@ private extension TableAlignment {
         case .center: .center
         case .right: .right
         }
+    }
+}
+
+/// The table popover: "Cols:" with a number field and a stepper,
+/// and an Insert button. The up and down arrow keys step the number too.
+final class TableSizeController: NSViewController, NSTextFieldDelegate {
+    static let columnRange = 1...20
+
+    let field = NSTextField()
+    let stepper = NSStepper()
+    let insertButton = NSButton(title: "Insert", target: nil, action: nil)
+    private let onInsert: (Int) -> Void
+
+    init(columns: Int, onInsert: @escaping (Int) -> Void) {
+        self.onInsert = onInsert
+        super.init(nibName: nil, bundle: nil)
+        self.columns = columns
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    /// The number shown, kept within `columnRange`.
+    var columns: Int {
+        get { Self.clamped(field.integerValue) }
+        set {
+            let value = Self.clamped(newValue)
+            field.integerValue = value
+            stepper.integerValue = value
+        }
+    }
+
+    private static func clamped(_ value: Int) -> Int {
+        min(max(value, columnRange.lowerBound), columnRange.upperBound)
+    }
+
+    override func loadView() {
+        let formatter = NumberFormatter()
+        formatter.allowsFloats = false
+        formatter.minimum = Self.columnRange.lowerBound as NSNumber
+        formatter.maximum = Self.columnRange.upperBound as NSNumber
+        field.formatter = formatter
+        field.alignment = .right
+        field.delegate = self
+        field.target = self
+        field.action = #selector(fieldChanged(_:))
+        field.widthAnchor.constraint(equalToConstant: 44).isActive = true
+
+        stepper.minValue = Double(Self.columnRange.lowerBound)
+        stepper.maxValue = Double(Self.columnRange.upperBound)
+        stepper.valueWraps = false
+        stepper.target = self
+        stepper.action = #selector(stepperChanged(_:))
+
+        insertButton.target = self
+        insertButton.action = #selector(insert(_:))
+        insertButton.keyEquivalent = "\r"
+
+        let row = NSStackView(views: [NSTextField(labelWithString: "Cols:"), field, stepper])
+        row.spacing = 6
+        let stack = NSStackView(views: [row, insertButton])
+        stack.orientation = .vertical
+        stack.alignment = .trailing
+        stack.spacing = 12
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        // A margin around the controls. The popover ignores a stack view's
+        // edge insets.
+        let container = NSView()
+        container.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: container.topAnchor, constant: 16),
+            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -16),
+            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
+            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
+        ])
+        view = container
+        preferredContentSize = container.fittingSize
+    }
+
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        view.window?.makeFirstResponder(field)
+        field.currentEditor()?.selectAll(nil)
+    }
+
+    @objc private func fieldChanged(_ sender: NSTextField) {
+        columns = sender.integerValue
+    }
+
+    @objc private func stepperChanged(_ sender: NSStepper) {
+        columns = sender.integerValue
+    }
+
+    /// Up and down change the number.
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        let step = selector == #selector(NSResponder.moveUp(_:)) ? 1 : selector == #selector(NSResponder.moveDown(_:)) ? -1 : 0
+        guard step != 0 else { return false }
+        columns = Self.clamped(Int(textView.string) ?? columns) + step
+        textView.selectAll(nil)
+        return true
+    }
+
+    @objc func insert(_ sender: Any?) {
+        let columns = Self.clamped(Int(field.currentEditor()?.string ?? field.stringValue) ?? self.columns)
+        if presentingViewController != nil { dismiss(self) }
+        onInsert(columns)
     }
 }

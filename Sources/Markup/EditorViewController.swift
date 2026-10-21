@@ -113,7 +113,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         linkButton.toolTip = "Link (⌘K)"
 
         tableButton.target = self
-        tableButton.action = #selector(showTableMenu(_:))
+        tableButton.action = #selector(insertTable(_:))
         tableButton.toolTip = "Insert Table"
 
         imageButton.target = self
