@@ -91,9 +91,7 @@ final class MarkdownDocument: NSDocument {
     /// The heading IDs in the project's other Markdown files.
     private func idsInOtherFiles() -> Set<String> {
         let own = fileURL?.standardizedFileURL
-        return Set((project?.markdownFiles() ?? []).filter { $0.url != own }.flatMap { file in
-            MarkdownCodec.lines(fromMarkdown: file.markdown).compactMap { $0.isHeading ? $0.anchor?.id : nil }
-        })
+        return Set((project?.headingIDs() ?? []).filter { $0.url != own }.flatMap(\.ids))
     }
 
     override func data(ofType typeName: String) throws -> Data {

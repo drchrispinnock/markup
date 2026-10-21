@@ -12,6 +12,12 @@ extension EditorViewController {
         line.length > 0 && listItem(at: line) == nil && storage.blockStyle(at: line.location).rawValue > 0
     }
 
+    /// Whether `line` is a heading with text. One whose text has all been
+    /// deleted is saved as an empty line, without its ID, as if deleted.
+    func isTitledHeading(_ line: NSRange) -> Bool {
+        isHeadingLine(line) && contentsRange(of: line).length > 0
+    }
+
     /// The ID that any character of `line` has.
     func headingAnchor(in line: NSRange) -> HeadingAnchor? {
         var anchor: HeadingAnchor?
@@ -24,9 +30,10 @@ extension EditorViewController {
         return anchor
     }
 
-    /// The document's headings, with their IDs, as saving would write them.
+    /// The document's headings with text, with their IDs, as saving would
+    /// write them.
     var headings: [Line] {
-        MarkdownCodec.lines(fromMarkdown: markdown).filter(\.isHeading)
+        MarkdownCodec.lines(fromMarkdown: markdown).filter(\.isTitledHeading)
     }
 
     /// Keeps each ID on one line. Splitting a heading leaves both halves
@@ -80,11 +87,38 @@ extension EditorViewController {
         guard let anchor = anchorLine(idLine), NSMaxRange(idLine) < storage.length,
               isHeadingLine(lineRange(at: NSMaxRange(idLine))) else { return false }
         replaceCharacters(in: idLine, with: NSAttributedString())
-        let heading = lineRange(at: idLine.location)
+        give(anchor, toHeading: lineRange(at: idLine.location))
+        return true
+    }
+
+    /// Makes a `{#x}` typed or pasted at the end of a heading its ID,
+    /// removing it from the text. Returns false, changing nothing, unless
+    /// `line` is a heading ending in one that `edit` touches.
+    func convertTrailingAnchor(of line: NSRange, after edit: NSRange) -> Bool {
+        guard isHeadingLine(line) else { return false }
+        let contents = contentsRange(of: line)
+        let text = (storage.string as NSString).substring(with: contents)
+        guard let (rest, anchor) = HeadingAnchor.trailing(in: text) else { return false }
+        let restLength = (rest as NSString).length
+        let removed = NSRange(location: contents.location + restLength, length: contents.length - restLength)
+        guard NSMaxRange(edit) > removed.location, edit.location <= NSMaxRange(removed) else { return false }
+        replaceCharacters(in: removed, with: NSAttributedString())
+        give(anchor, toHeading: lineRange(at: line.location))
+        return true
+    }
+
+    /// Gives `heading` `anchor`, unless another heading, here or in the
+    /// project's other files, has its ID, as when a heading is copied rather
+    /// than moved. The copy is left without one, to get a new one when saved.
+    private func give(_ anchor: HeadingAnchor, toHeading heading: NSRange) {
+        let others = lineRanges(in: NSRange(location: 0, length: storage.length)).filter { $0 != heading && isTitledHeading($0) }
+        guard !others.contains(where: { headingAnchor(in: $0)?.id == anchor.id }) else { return }
+        let own = document?.fileURL?.standardizedFileURL
+        if let project = document?.project,
+           project.headingIDs().contains(where: { $0.url != own && $0.ids.contains(anchor.id) }) { return }
         changeAttributes(in: heading) {
             storage.addAttribute(.headingAnchor, value: anchor, range: heading)
         }
-        return true
     }
 
     // MARK: - New IDs
@@ -110,7 +144,7 @@ extension EditorViewController {
         guard !isShowingMarkdown else {
             let markdown = storage.string
             var lines = MarkdownCodec.lines(fromMarkdown: markdown)
-            for (number, index) in lines.indices.filter({ lines[$0].isHeading }).enumerated()
+            for (number, index) in lines.indices.filter({ lines[$0].isTitledHeading }).enumerated()
             where lines[index].anchor == nil && (onlyHeading == nil || onlyHeading == number) {
                 lines[index].anchor = newAnchor(text: lines[index].text, level: lines[index].style.rawValue)
             }
@@ -119,7 +153,7 @@ extension EditorViewController {
         }
         guard storage.length > 0 else { return }
         storage.beginEditing()
-        for (number, line) in lineRanges(in: NSRange(location: 0, length: storage.length)).filter(isHeadingLine).enumerated()
+        for (number, line) in lineRanges(in: NSRange(location: 0, length: storage.length)).filter(isTitledHeading).enumerated()
         where headingAnchor(in: line) == nil && (onlyHeading == nil || onlyHeading == number) {
             let anchor = newAnchor(text: inlineMarkdown(in: contentsRange(of: line)),
                                    level: storage.blockStyle(at: line.location).rawValue)

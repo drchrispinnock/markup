@@ -1405,8 +1405,7 @@ import Testing
         }
         #expect(height(at: 6) < 1 && height(at: 21) < 1)
         #expect(height(at: 8) > 10)
-        // Copying writes headings without their markers, as ever.
-        #expect(editor.plainText(for: NSRange(location: 0, length: storage.length)) == String(markdown.dropFirst(2)))
+        #expect(editor.plainText(for: NSRange(location: 0, length: storage.length)) == markdown)
     }
 
     @Test func typedCommentsAreHidden() {

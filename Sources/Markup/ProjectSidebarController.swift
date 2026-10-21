@@ -62,6 +62,8 @@ final class ProjectSidebarController: NSViewController, NSOutlineViewDataSource,
 
     /// Called when the user chooses a file.
     var onChoose: ((URL) -> Void)?
+    /// Called when anything in the folder changes.
+    var onFolderChange: (() -> Void)?
 
     init(root: URL) {
         self.root = root
@@ -91,7 +93,10 @@ final class ProjectSidebarController: NSViewController, NSOutlineViewDataSource,
         scrollView.drawsBackground = false
         view = scrollView
 
-        watcher = DirectoryWatcher(url: root) { [weak self] in self?.reload() }
+        watcher = DirectoryWatcher(url: root) { [weak self] in
+            self?.reload()
+            self?.onFolderChange?()
+        }
     }
 
     func stopWatching() {

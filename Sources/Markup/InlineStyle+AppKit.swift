@@ -53,6 +53,14 @@ extension InlineStyle {
             ? NSColor(srgbRed: 0.6, green: 0.5, blue: 0, alpha: 0.75) : NSColor(srgbRed: 1, green: 0.93, blue: 0.25, alpha: 1)
     }
 
+    /// The background of a link to a heading that isn't there, like
+    /// highlighting but red: a light red, or in dark mode a dimmer red that
+    /// light text can be read on.
+    static let brokenLinkColor = NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(srgbRed: 0.7, green: 0.15, blue: 0.15, alpha: 0.75) : NSColor(srgbRed: 1, green: 0.6, blue: 0.6, alpha: 1)
+    }
+
     /// The background behind text with `styles`, if any. Highlight wins
     /// over code's shading.
     static func background(for styles: Set<InlineStyle>) -> NSColor? {

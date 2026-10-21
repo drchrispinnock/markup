@@ -43,7 +43,7 @@ extension EditorViewController {
         if settings.crossFileLinks != .off, let project = document?.project {
             let own = document?.fileURL?.standardizedFileURL
             for file in project.markdownFiles() where file.url != own {
-                result += targets(in: MarkdownCodec.lines(fromMarkdown: file.markdown).filter(\.isHeading), file: file.url)
+                result += targets(in: MarkdownCodec.lines(fromMarkdown: file.markdown).filter(\.isTitledHeading), file: file.url)
             }
         }
         return result

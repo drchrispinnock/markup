@@ -55,6 +55,9 @@ extension EditorViewController {
                     location = above.location
                     continue
                 }
+                _ = convertTrailingAnchor(of: lineRange(at: location), after: edit)
+            } else if convertTrailingAnchor(of: line, after: edit) {
+                // A {#x} just typed at the end of a heading is its ID.
             } else {
                 convertListPrefix(of: line, after: edit)
             }

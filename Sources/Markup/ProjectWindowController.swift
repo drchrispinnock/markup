@@ -21,6 +21,10 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
     /// The document shown.
     private(set) var currentDocument: MarkdownDocument?
 
+    /// The project's Markdown files as last read from disk
+    /// (`markdownFiles()`), until the folder changes.
+    var filesOnDisk: [(url: URL, markdown: String, ids: Set<String>)]?
+
     /// Documents still to ask about while closing.
     private var documentsToReview: [MarkdownDocument] = []
 
@@ -72,6 +76,7 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
         window.toolbarStyle = .unifiedCompact
 
         sidebar.onChoose = { [unowned self] url in open(url) }
+        sidebar.onFolderChange = { [weak self] in self?.filesChanged() }
         updateTitle()
 
         NotificationCenter.default.addObserver(self, selector: #selector(documentEditedChanged(_:)),
@@ -85,13 +90,15 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
 
     // MARK: - Showing files
 
-    /// Opens the file at `url` and shows it. A file already open
-    /// in a window of its own is brought to the front there instead.
-    func open(_ url: URL) {
+    /// Opens the file at `url` and shows it, then calls `then`. A file
+    /// already open in a window of its own is brought to the front there
+    /// instead.
+    func open(_ url: URL, then: ((MarkdownDocument) -> Void)? = nil) {
         NSDocumentController.shared.openDocument(withContentsOf: url, display: false) { [weak self] document, _, error in
             guard let self else { return }
             if let document = document as? MarkdownDocument {
                 show(document)
+                then?(document)
             } else if let error {
                 presentError(error, modalFor: window!, delegate: nil, didPresent: nil, contextInfo: nil)
             }

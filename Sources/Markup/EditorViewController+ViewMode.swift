@@ -30,6 +30,7 @@ extension EditorViewController {
         isShowingMarkdown = showMarkdown
         if showMarkdown {
             storage.setAttributedString(NSAttributedString(string: markdown, attributes: Self.markdownAttributes))
+            resetLinkCheck()
         } else {
             load(markdown: markdown)
         }

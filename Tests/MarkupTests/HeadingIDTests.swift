@@ -94,7 +94,7 @@ import Testing
         editor.load(markdown: Self.sample)
         textView.setSelectedRange(NSRange(location: 0, length: 0))
         type("\n")
-        #expect(editor.markdown.hasPrefix("#\n{#id: delegating}\n# Delegating and Staking\nText"))
+        #expect(editor.markdown.hasPrefix("\n{#id: delegating}\n# Delegating and Staking\nText"))
     }
 
     @Test func anIDTypedAboveAHeadingBecomesItsID() {
@@ -308,6 +308,17 @@ import Testing
         #expect(other.isDocumentEdited)
         #expect(other.currentMarkdown == "{#id: theirs}\n# Theirs\n{#id: other_2_Setting}\n## *Setting* up")
         #expect(project.currentDocument === document)
+    }
+
+    @Test func anEmptyHeadingBeforeTheOneLinkedToIsSkipped() throws {
+        defer { cleanUp() }
+        try Data("{#id: old}\n##\n## Sub\nText".utf8).write(to: folder.appendingPathComponent("part/other.md"))
+        project.filesChanged()
+        #expect(editor.crossLinkTargets().map(\.title) == ["Mine", "Here", "Sub"])
+        link(to: "Sub", selecting: NSRange(location: 0, length: 5))
+        #expect(editor.markdown.hasPrefix("[Intro](#other_2_Sub)\n"))
+        let other = project.documents.first { $0 !== document }!
+        #expect(other.currentMarkdown == "\n{#id: other_2_Sub}\n## Sub\nText")
     }
 
     @Test func relativePaths() {

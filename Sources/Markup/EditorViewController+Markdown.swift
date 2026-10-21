@@ -8,6 +8,7 @@ extension EditorViewController {
                                                 : Self.formattedText(fromMarkdown: markdown, imageFolders: imageFolders))
         textView.setSelectedRange(NSRange(location: 0, length: 0))
         updateForSelection()
+        resetLinkCheck()
     }
 
     /// The folders an image's path is looked up in (`Settings.imageFolders`).
@@ -115,8 +116,11 @@ extension EditorViewController {
                 lines.append(Line(style: .code, text: markdownText(in: contents),
                                   fence: startsBlock ? fence ?? CodeFence() : nil))
             } else {
-                let style = line.length > 0 ? storage.blockStyle(at: line.location) : .paragraph
-                lines.append(Line(style: style, text: inlineMarkdown(in: contents), anchor: headingAnchor(in: line)))
+                // A heading whose text has all been deleted is gone, ID and
+                // all, rather than left as a bare "##".
+                let style = contents.length > 0 ? storage.blockStyle(at: line.location) : .paragraph
+                lines.append(Line(style: style, text: inlineMarkdown(in: contents),
+                                  anchor: contents.length > 0 ? headingAnchor(in: line) : nil))
             }
             location = NSMaxRange(line)
         } while location < string.length
@@ -193,8 +197,17 @@ extension EditorViewController {
                     let newline = string.range(of: "\n", range: NSRange(location: location, length: NSMaxRange(run) - location))
                     let end = newline.location == NSNotFound ? NSMaxRange(run) : newline.location
                     let segment = NSRange(location: location, length: end - location)
-                    text += segment.length > 0 && storage.blockStyle(at: location) == .code
-                        ? markdownText(in: segment) : inlineMarkdown(in: segment)
+                    let line = lineRange(at: location)
+                    if segment == contentsRange(of: line), isTitledHeading(line) {
+                        // A whole heading is copied as one, with its ID, so
+                        // that moving it keeps the links to it.
+                        text += MarkdownCodec.markdown(from: [Line(style: storage.blockStyle(at: location),
+                                                                   text: inlineMarkdown(in: segment),
+                                                                   anchor: headingAnchor(in: line))])
+                    } else {
+                        text += segment.length > 0 && storage.blockStyle(at: location) == .code
+                            ? markdownText(in: segment) : inlineMarkdown(in: segment)
+                    }
                     if newline.location != NSNotFound { text += "\n" }
                     location = newline.location == NSNotFound ? end : NSMaxRange(newline)
                 }

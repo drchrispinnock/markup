@@ -19,6 +19,10 @@ public struct Line: Equatable, Sendable {
     }
 
     public var isHeading: Bool { style.rawValue > 0 && list == nil }
+
+    /// A heading with text. The editor saves one without text as an empty
+    /// line, so only these have IDs and are listed to link to.
+    public var isTitledHeading: Bool { isHeading && !text.isEmpty }
 }
 
 /// The opening fence of a code block: its number of backticks and the info

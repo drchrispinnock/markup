@@ -78,6 +78,17 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     /// The document being edited. It owns this controller.
     weak var document: MarkdownDocument?
 
+    /// The IDs of the headings, with their text, as the last link check
+    /// found them (`checkLinks`).
+    var headingTitles: [String: String] = [:]
+    /// The links that go to no heading, as the last check found them.
+    var brokenLinks: [NSRange] = []
+    var isLinkCheckScheduled = false
+    var linkCheckAfterEdit = false
+    /// Says that links go to a heading just deleted.
+    lazy var deletedHeadingBar = DeletedHeadingBar(target: self)
+    var deletedHeadingBarHeight: NSLayoutConstraint!
+
     init(plainText: Bool = false) {
         isPlainText = plainText
         isShowingMarkdown = plainText
@@ -140,7 +151,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         let scrollView = makeScrollView()
 
         let contentView = NSView()
-        for view in [headerView, divider, scrollView] {
+        for view in [headerView, divider, deletedHeadingBar, scrollView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             contentView.addSubview(view)
         }
@@ -196,13 +207,23 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             divider.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             divider.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
 
-            scrollView.topAnchor.constraint(equalTo: divider.bottomAnchor),
+            deletedHeadingBar.topAnchor.constraint(equalTo: divider.bottomAnchor),
+            deletedHeadingBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            deletedHeadingBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+
+            scrollView.topAnchor.constraint(equalTo: deletedHeadingBar.bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
         ])
 
+        deletedHeadingBarHeight = deletedHeadingBar.heightAnchor.constraint(equalToConstant: 0)
+        deletedHeadingBarHeight.isActive = true
+        deletedHeadingBar.isHidden = true
+
         view = contentView
+        NotificationCenter.default.addObserver(self, selector: #selector(projectFilesChanged(_:)),
+                                               name: .markupProjectFilesChanged, object: nil)
         textView.delegate = self
         storage.delegate = self
         textView.markerClickHandler = { [unowned self] index in toggleCheckbox(at: index) }
@@ -212,6 +233,17 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
+    }
+
+    // Other files may have changed while another was shown.
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        scheduleLinkCheck(afterEdit: false)
+    }
+
+    @objc private func projectFilesChanged(_ notification: Notification) {
+        guard let project = notification.object as? ProjectWindowController, project === document?.project else { return }
+        scheduleLinkCheck(afterEdit: false)
     }
 
     /// The text view uses TextKit 1, whose layout manager can locate list
@@ -402,6 +434,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     nonisolated func textStorage(_ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions,
                                  range editedRange: NSRange, changeInLength delta: Int) {
         MainActor.assumeIsolated {
+            scheduleLinkCheck()
             guard editedMask.contains(.editedCharacters), !isShowingMarkdown, let undoManager,
                   !undoManager.isUndoing, !undoManager.isRedoing else { return }
             for line in lineRanges(in: editedRange) where line.length > 0 {
