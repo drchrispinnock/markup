@@ -3,6 +3,14 @@
     <channel>
         <title>Markup</title>
         <item>
+            <title>0.3</title>
+            <pubDate>Thu, 22 Oct 2026 18:37:52 +0100</pubDate>
+            <sparkle:version>3</sparkle:version>
+            <sparkle:shortVersionString>0.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/drchrispinnock/markup/releases/download/v0.3/Markup-0.3.zip" length="3268789" type="application/octet-stream" sparkle:edSignature="xjkc5Ly2A3qRsIOlat7NxW0GrucrtcO+/a8m/ZjCRF/Gi0jFNvVzurJCaWujPmi2htDtR6To2ucZ58ng1DGwCQ=="/>
+        </item>
+        <item>
             <title>0.2</title>
             <pubDate>Thu, 22 Oct 2026 18:07:08 +0100</pubDate>
             <sparkle:version>2</sparkle:version>
