@@ -206,6 +206,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             divider.topAnchor.constraint(equalTo: headerView.bottomAnchor),
             divider.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             divider.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            // The text hangs below it, so it needs a height. Without one,
+            // Auto Layout may stretch it into a vertical line instead.
+            divider.heightAnchor.constraint(equalToConstant: 1),
 
             deletedHeadingBar.topAnchor.constraint(equalTo: divider.bottomAnchor),
             deletedHeadingBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
@@ -216,6 +219,11 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
         ])
+
+        // The two groups of controls never overlap: the editor, and so the
+        // window, is kept at least as wide as they are.
+        superscriptButton.trailingAnchor.constraint(lessThanOrEqualTo: linkButton.leadingAnchor, constant: -16)
+            .isActive = !plainText
 
         deletedHeadingBarHeight = deletedHeadingBar.heightAnchor.constraint(equalToConstant: 0)
         deletedHeadingBarHeight.isActive = true
@@ -238,11 +246,14 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     // Other files may have changed while another was shown.
     override func viewDidAppear() {
         super.viewDidAppear()
+        updateTags()
         scheduleLinkCheck(afterEdit: false)
     }
 
     @objc private func projectFilesChanged(_ notification: Notification) {
         guard let project = notification.object as? ProjectWindowController, project === document?.project else { return }
+        // tags.txt may have changed.
+        updateTags()
         scheduleLinkCheck(afterEdit: false)
     }
 

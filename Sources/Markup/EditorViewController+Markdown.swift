@@ -69,16 +69,28 @@ extension EditorViewController {
         for span in InlineMarkdown.spans(in: hasNewline ? String(text.dropLast()) : text) {
             let spanText = NSMutableAttributedString(
                 string: span.text, attributes: attributes.withInlineStyles(span.styles, link: span.link))
-            let comments = HTMLComment.ranges(in: span.text)
-            let images = MarkdownImage.images(in: span.text).filter { image in !comments.contains { $0.overlaps(image.range) } }
-            let wholes = comments.map { ($0, nil as MarkdownImage?) } + images.map { ($0.range, $0.image) }
-            for (whole, image) in wholes.sorted(by: { $0.0.lowerBound > $1.0.lowerBound }) {
+            // Tags first, since they are written as comments, then
+            // comments: an image inside one is part of it.
+            let tags = MarkupTag.tags(in: span.text)
+            let comments = HTMLComment.ranges(in: span.text).filter { comment in !tags.contains { $0.range.overlaps(comment) } }
+            let images = MarkdownImage.images(in: span.text).filter { image in
+                !tags.contains { $0.range.overlaps(image.range) } && !comments.contains { $0.overlaps(image.range) }
+            }
+            let wholes = tags.map { ($0.range, Whole.tag($0.tag)) } + comments.map { ($0, Whole.comment) }
+                + images.map { ($0.range, Whole.image($0.image)) }
+            for (whole, kind) in wholes.sorted(by: { $0.0.lowerBound > $1.0.lowerBound }) {
                 let range = NSRange(location: whole.lowerBound, length: whole.count)
                 let markdown = (span.text as NSString).substring(with: range)
                 let attributes = spanText.attributes(at: range.location, effectiveRange: nil)
-                spanText.replaceCharacters(in: range, with: image.map {
-                    $0.attachmentString(markdown: markdown, attributes: attributes, folders: imageFolders)
-                } ?? HTMLComment.attachmentString(markdown: markdown, attributes: attributes))
+                switch kind {
+                case .tag(let tag):
+                    spanText.replaceCharacters(in: range, with: tag.attachmentString(attributes: attributes))
+                case .comment:
+                    spanText.replaceCharacters(in: range, with: HTMLComment.attachmentString(markdown: markdown, attributes: attributes))
+                case .image(let image):
+                    spanText.replaceCharacters(in: range, with: image.attachmentString(markdown: markdown, attributes: attributes,
+                                                                                       folders: imageFolders))
+                }
             }
             result.append(spanText)
         }
@@ -86,6 +98,13 @@ extension EditorViewController {
             result.append(NSAttributedString(string: "\n", attributes: attributes))
         }
         return result
+    }
+
+    /// Something in a line's Markdown shown as one attachment character.
+    private enum Whole {
+        case tag(MarkupTag)
+        case comment
+        case image(MarkdownImage)
     }
 
     var markdown: String {
@@ -131,14 +150,15 @@ extension EditorViewController {
         return MarkdownCodec.markdown(from: lines)
     }
 
-    /// The text of `range` with each image and comment written as its
+    /// The text of `range` with each tag, image and comment written as its
     /// Markdown.
     private func markdownText(in range: NSRange) -> String {
         let string = storage.string as NSString
         var text = ""
         storage.enumerateAttributes(in: range) { attributes, run, _ in
-            // Adjacent copies of the same image or comment form one run.
-            let markdown = (attributes[.markdownImage] ?? attributes[.markdownComment]) as? String
+            // Adjacent copies of the same tag, image or comment form one run.
+            let markdown = (attributes[.markupTag] as? MarkupTag)?.markdown
+                ?? (attributes[.markdownImage] ?? attributes[.markdownComment]) as? String
             text += markdown.map { String(repeating: $0, count: run.length) } ?? string.substring(with: run)
         }
         return text

@@ -38,6 +38,8 @@ extension EditorViewController {
         // out, so they can't be replayed here. Clearing them doesn't change
         // whether the document has unsaved changes.
         undoManager?.removeAllActions()
+        // Tags weren't kept up to date in the Markdown view.
+        if !showMarkdown { updateTags() }
 
         viewModeControl.selectedSegment = showMarkdown ? 1 : 0
         stylePopUp.isEnabled = !showMarkdown
@@ -165,8 +167,10 @@ extension EditorViewController: NSMenuItemValidation {
             return !isShowingMarkdown
         case #selector(insertTable(_:)):
             return !isShowingMarkdown
-        case #selector(editLink(_:)), #selector(insertCrossLink(_:)):
+        case #selector(editLink(_:)), #selector(insertCrossLink(_:)), #selector(insertImage(_:)):
             return !isShowingMarkdown
+        case #selector(insertTag(_:)):
+            return !isShowingMarkdown && !isPlainText
         case #selector(toggleSubscript(_:)):
             menuItem.state = subscriptButton.state
             return !isShowingMarkdown

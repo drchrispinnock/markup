@@ -12,6 +12,7 @@ final class Settings {
     static let headingIDFormKey = "MarkupHeadingIDForm"
     static let headingIDSchemeKey = "MarkupHeadingIDScheme"
     static let crossFileLinksKey = "MarkupCrossFileLinks"
+    static let quickTagsKey = "MarkupQuickTags"
 
     let defaults: UserDefaults
 
@@ -67,6 +68,12 @@ final class Settings {
     var crossFileLinks: CrossFileLinks {
         get { defaults.string(forKey: Self.crossFileLinksKey).flatMap(CrossFileLinks.init) ?? .idOnly }
         set { defaults.set(newValue.rawValue, forKey: Self.crossFileLinksKey) }
+    }
+
+    /// Whether typing `@name@` inserts the tag `name`. Off unless turned on.
+    var quickTags: Bool {
+        get { defaults.bool(forKey: Self.quickTagsKey) }
+        set { defaults.set(newValue, forKey: Self.quickTagsKey) }
     }
 
     /// A project window open when the app last quit: its folder, and the

@@ -173,6 +173,10 @@ extension NSMutableAttributedString {
                     addAttributes([.foregroundColor: InlineStyle.linkColor, .underlineStyle: NSUnderlineStyle.single.rawValue,
                                    .toolTip: link], range: run)
                 }
+            } else if let tag = attributes[.markupTag] as? MarkupTag {
+                if attributes[.toolTip] as? String != tag.toolTip {
+                    addAttribute(.toolTip, value: tag.toolTip, range: run)
+                }
             } else if attributes[.toolTip] != nil {
                 // Was a link.
                 addAttribute(.foregroundColor, value: NSColor.textColor, range: run)

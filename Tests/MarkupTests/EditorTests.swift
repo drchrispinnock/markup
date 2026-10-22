@@ -701,6 +701,14 @@ import Testing
         expectTextFitsWindow()
     }
 
+    @Test func headerControlsNeverOverlap() {
+        let window = editor.view.window!
+        window.setContentSize(NSSize(width: 400, height: 400))
+        window.layoutIfNeeded()
+        #expect(editor.superscriptButton.frame.maxX < editor.linkButton.frame.minX)
+        #expect(window.contentView!.bounds.width >= editor.viewModeControl.frame.maxX)
+    }
+
     /// Including a heading, a list item and a word too long for one line.
     @Test func longLinesWrap() {
         editor.load(markdown: "# " + String(repeating: "heading ", count: 40) + "\n"
@@ -1629,6 +1637,30 @@ import Testing
                                             ofType: "net.daringfireball.markdown")
         document.undoManager?.groupsByEvent = false
         return document
+    }
+
+    /// A narrow editor, as a split view restores it, shows the text below
+    /// the header, rather than stretching the header's separator downwards.
+    @Test func narrowSavedSplitStillShowsTheText() throws {
+        let defaults = UserDefaults.standard
+        let splitKey = "NSSplitView Subview Frames MarkupProjectSplit"
+        let frameKey = "NSWindow Frame MarkupProject \(folder.standardizedFileURL.path)"
+        let saved = defaults.object(forKey: splitKey)
+        defer {
+            defaults.set(saved, forKey: splitKey)
+            defaults.removeObject(forKey: frameKey)
+        }
+        defaults.set(["0, 0, 408, 1395, NO, NO", "408, 0, 400, 1395, NO, NO"], forKey: splitKey)
+        defaults.set("100 12 808 1395 0 0 3440 1410 ", forKey: frameKey)
+        let project = ProjectWindowController(root: folder)
+        let a = try document("a.md")
+        project.show(a)
+        project.showWindow(nil)
+        project.window!.layoutIfNeeded()
+        let scrollView = a.editor.textView.enclosingScrollView!
+        #expect(!scrollView.hasAmbiguousLayout)
+        #expect(scrollView.frame.height > 1000)
+        project.close()
     }
 
     @Test func sidebarListsFoldersThenTextFiles() {

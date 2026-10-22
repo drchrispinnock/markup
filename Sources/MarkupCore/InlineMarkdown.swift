@@ -59,8 +59,8 @@ public struct InlineSpan: Equatable, Sendable {
 /// Bold, italic, strikethrough, code, subscript and superscript within a
 /// line: `**bold**`, `*italic*`, `***both***`, `~~strikethrough~~`,
 /// `` `code` ``, `H~2~O`, `x^2^` and `==highlight==`, and links,
-/// `[text](destination)`. Images and HTML comments are kept whole, as their
-/// Markdown. A
+/// `[text](destination)`. Tags, images and HTML comments are kept whole,
+/// as their Markdown. A
 /// backslash makes an asterisk, tilde, backtick, caret, equals sign or
 /// bracket literal (`\*`, `\~`, `` \` ``, `\^`, `\=`, `\[`, `\]`).
 ///
@@ -155,15 +155,20 @@ public enum InlineMarkdown {
         case delimiter(character: UInt16, lo: Int, hi: Int, length: Int, canOpen: Bool, canClose: Bool)
     }
 
+    /// The parts of `text` that are kept whole, in order: tags, then
+    /// comments, then images. Tags come first, since theirs are comments,
+    /// and comments next: an image inside one is part of it.
+    static func wholeRanges(in text: String) -> [Range<Int>] {
+        var wholes = MarkupTag.tags(in: text).map(\.range)
+        wholes += HTMLComment.ranges(in: text).filter { comment in !wholes.contains { $0.overlaps(comment) } }
+        wholes += MarkdownImage.images(in: text).map(\.range).filter { image in !wholes.contains { $0.overlaps(image) } }
+        return wholes.sorted { $0.lowerBound < $1.lowerBound }
+    }
+
     private static func parse(_ text: String, readsLinks: Bool = true)
         -> (spans: [InlineSpan], emphases: [Emphasis], links: [Link]) {
         let units = Array(text.utf16)
-        // Comments come first: an image inside one is part of it.
-        let comments = HTMLComment.ranges(in: text)
-        let images = MarkdownImage.images(in: text).map(\.range).filter { image in
-            !comments.contains { $0.overlaps(image) }
-        }
-        let wholes = (comments + images).sorted { $0.lowerBound < $1.lowerBound }
+        let wholes = wholeRanges(in: text)
 
         var tokens: [Token] = []
         var emphases: [Emphasis] = []
@@ -396,11 +401,7 @@ public enum InlineMarkdown {
             }
             let utf16 = Array(span.text.utf16)
             var index = 0
-            let comments = HTMLComment.ranges(in: span.text)
-            let images = MarkdownImage.images(in: span.text).map(\.range).filter { image in
-                !comments.contains { $0.overlaps(image) }
-            }
-            let wholes = (comments + images).sorted { $0.lowerBound < $1.lowerBound }
+            let wholes = wholeRanges(in: span.text)
             for whole in wholes + [utf16.count..<utf16.count] {
                 for character in String(decoding: utf16[index..<whole.lowerBound], as: UTF16.self) {
                     units.append(Unit(text: String(character), isVerbatim: false, styles: span.styles, link: span.link))

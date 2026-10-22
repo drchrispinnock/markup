@@ -62,12 +62,20 @@ enum MainMenu {
                            keyEquivalent: "=").keyEquivalentModifierMask = [.command, .control]
         formatMenu.addItem(withTitle: "Highlight", action: #selector(EditorViewController.toggleHighlight(_:)),
                            keyEquivalent: "H")
-        formatMenu.addItem(.separator())
-        formatMenu.addItem(withTitle: "Link…", action: #selector(EditorViewController.editLink(_:)), keyEquivalent: "k")
-        formatMenu.addItem(withTitle: "Cross Link…", action: #selector(EditorViewController.insertCrossLink(_:)),
-                           keyEquivalent: "K")
-        formatMenu.addItem(withTitle: "Table…", action: #selector(EditorViewController.insertTable(_:)), keyEquivalent: "")
         mainMenu.addItem(submenu: formatMenu, title: "Format")
+
+        let insertMenu = NSMenu(title: "Insert")
+        insertMenu.addItem(withTitle: "Link…", action: #selector(EditorViewController.editLink(_:)), keyEquivalent: "k")
+        insertMenu.addItem(withTitle: "Cross Link…", action: #selector(EditorViewController.insertCrossLink(_:)),
+                           keyEquivalent: "K")
+        insertMenu.addItem(withTitle: "Table…", action: #selector(EditorViewController.insertTable(_:)), keyEquivalent: "")
+        insertMenu.addItem(withTitle: "Image…", action: #selector(EditorViewController.insertImage(_:)), keyEquivalent: "")
+        insertMenu.addItem(.separator())
+        insertMenu.addItem(withTitle: "Tag…", action: #selector(EditorViewController.insertTag(_:)), keyEquivalent: "")
+        // Only project windows have a tags.txt.
+        insertMenu.addItem(withTitle: "Update Tags in Project",
+                           action: #selector(ProjectWindowController.updateTagsInProject(_:)), keyEquivalent: "")
+        mainMenu.addItem(submenu: insertMenu, title: "Insert")
 
         let viewMenu = NSMenu(title: "View")
         // NSSplitViewController handles this in project windows, and retitles

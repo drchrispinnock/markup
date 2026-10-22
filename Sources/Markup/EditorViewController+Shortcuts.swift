@@ -13,6 +13,8 @@ extension EditorViewController {
     /// - "![alt](path)" anywhere in a line becomes the image.
     /// - "[text](destination)" anywhere in a line becomes a link.
     /// - "<!-- comment -->" anywhere in a line is hidden.
+    /// - A tag, "<!-- MARKUPTAG name-->value<!-- ENDMARKUPTAG -->", and with
+    ///   the quick tags setting, "@name@", anywhere in a line becomes the tag.
     /// - "{#id: x}" or "{#x}" alone on the line above a heading becomes the
     ///   heading's ID.
     ///
@@ -61,6 +63,8 @@ extension EditorViewController {
             } else {
                 convertListPrefix(of: line, after: edit)
             }
+            // Tags first, since they are written as comments.
+            convertTags(in: lineRange(at: location), after: edit)
             convertEmphasis(in: lineRange(at: location), after: edit)
             convertImages(in: lineRange(at: location), after: edit)
             convertLinks(in: lineRange(at: location), after: edit)
@@ -183,7 +187,7 @@ extension EditorViewController {
     /// Whether an odd number of backticks that aren't inline code come
     /// before `range` on its line, so it may be inside inline code that is
     /// still being typed.
-    private func followsUnclosedBacktick(_ range: NSRange, in contents: NSRange) -> Bool {
+    func followsUnclosedBacktick(_ range: NSRange, in contents: NSRange) -> Bool {
         let string = storage.string as NSString
         var count = 0
         for index in contents.location..<range.location where string.character(at: index) == UInt16(UInt8(ascii: "`")) {
@@ -193,7 +197,7 @@ extension EditorViewController {
     }
 
     /// Whether any of `range` is already inline code.
-    private func isInlineCode(_ range: NSRange) -> Bool {
+    func isInlineCode(_ range: NSRange) -> Bool {
         var found = false
         storage.enumerateAttribute(.inlineCode, in: range) { value, _, stop in
             if value != nil {

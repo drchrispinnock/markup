@@ -279,6 +279,7 @@ final class DeletedHeadingBar: NSView {
             closeButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
             closeButton.centerYAnchor.constraint(equalTo: row.centerYAnchor),
             divider.topAnchor.constraint(equalTo: topAnchor, constant: Self.height - 1),
+            divider.heightAnchor.constraint(equalToConstant: 1),
             divider.leadingAnchor.constraint(equalTo: leadingAnchor),
             divider.trailingAnchor.constraint(equalTo: trailingAnchor),
         ])

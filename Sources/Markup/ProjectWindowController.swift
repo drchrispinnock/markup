@@ -25,6 +25,10 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
     /// (`markdownFiles()`), until the folder changes.
     var filesOnDisk: [(url: URL, markdown: String, ids: Set<String>)]?
 
+    /// The values in the project's `tags.txt` as last read (`tagValues()`),
+    /// until the folder changes: `.some(nil)` when there is no such file.
+    var tagValuesOnDisk: [String: String]??
+
     /// Documents still to ask about while closing.
     private var documentsToReview: [MarkdownDocument] = []
 

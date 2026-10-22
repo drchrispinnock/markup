@@ -11,6 +11,7 @@ final class SettingsWindowController: NSWindowController {
     let headingIDFormPopUp = NSPopUpButton()
     let headingIDSchemePopUp = NSPopUpButton()
     let crossFileLinksPopUp = NSPopUpButton()
+    let quickTagsCheckbox = NSButton(checkboxWithTitle: "Typing @name@ inserts the tag", target: nil, action: nil)
 
     static let formTitles: [HeadingAnchor.Form: String] = [
         .idLine: "{#id: x} above the heading",
@@ -79,6 +80,13 @@ final class SettingsWindowController: NSWindowController {
         idNote.textColor = .secondaryLabelColor
         idNote.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
 
+        quickTagsCheckbox.target = self
+        quickTagsCheckbox.action = #selector(quickTagsChanged(_:))
+        let tagsNote = NSTextField(wrappingLabelWithString:
+            "Tags show values from the project's tags.txt. Insert > Tag adds one.")
+        tagsNote.textColor = .secondaryLabelColor
+        tagsNote.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+
         let buttons = NSStackView(views: [chooseButton, clearButton])
         let grid = NSGridView(views: [
             [label, imagesDirectoryControl],
@@ -89,8 +97,11 @@ final class SettingsWindowController: NSWindowController {
             [NSTextField(labelWithString: "Make from:"), headingIDSchemePopUp],
             [NSGridCell.emptyContentView, idNote],
             [NSTextField(labelWithString: "Links to other files:"), crossFileLinksPopUp],
+            [NSTextField(labelWithString: "Quick tags:"), quickTagsCheckbox],
+            [NSGridCell.emptyContentView, tagsNote],
         ])
         grid.row(at: 3).topPadding = 12
+        grid.row(at: 8).topPadding = 12
         grid.column(at: 0).xPlacement = .trailing
         grid.rowAlignment = .firstBaseline
         grid.rowSpacing = 8
@@ -109,6 +120,7 @@ final class SettingsWindowController: NSWindowController {
         window.contentView = contentView
         showImagesDirectory()
         showHeadingIDs()
+        quickTagsCheckbox.state = settings.quickTags ? .on : .off
     }
 
     @available(*, unavailable)
@@ -150,6 +162,10 @@ final class SettingsWindowController: NSWindowController {
             settings.crossFileLinks = links
         }
         showHeadingIDs()
+    }
+
+    @objc func quickTagsChanged(_ sender: Any?) {
+        settings.quickTags = quickTagsCheckbox.state == .on
     }
 
     private func showHeadingIDs() {
