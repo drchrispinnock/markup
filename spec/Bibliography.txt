@@ -1,0 +1,60 @@
+# Handling Bibliography
+
+If there is a file in the project directory called bibliography.txt, you should read it and keep up to date.
+Ignore blank lines. Ignore lines beginning with #
+It will be a | seperated file - usually two fields. The first is the key and the second is the value. It's different from the tags file.
+
+SEC|Section
+
+SEC refers to a section.
+
+Anything else is a reference:
+
+R-1|Tezos — a self-amending crypto-ledger White paper, L. M. Goodman, 2014, https://tezos.com/whitepaper.pdf
+R-2|Tezos - Getting Started, https://tezos.com/learn/getting-started/
+R-3|Tezos, Wikipedia entry, https://en.wikipedia.org/wiki/Tezos
+
+An example file then:
+
+SEC|Tezos
+R-1|Tezos — a self-amending crypto-ledger White paper, L. M. Goodman, 2014, https://tezos.com/whitepaper.pdf
+R-2|Tezos - Getting Started, https://tezos.com/learn/getting-started/
+R-3|Tezos, Wikipedia entry, https://en.wikipedia.org/wiki/Tezos
+SEC|Tezos Governance
+A-0|[Alternative Hangzhou proposal PsCUKj6wy](https://forum.tezosagora.org/t/hangzhou-pscukj6wy/3729)
+
+You need to read this in. The bibliography will be number from 1 in the order so:
+
+**Tezos**
+
+[1] Tezos — a self-amending crypto-ledger White paper, L. M. Goodman, 2014, https://tezos.com/whitepaper.pdf
+
+[2] Tezos - Getting Started, https://tezos.com/learn/getting-started/
+
+[3] Tezos, Wikipedia entry, https://en.wikipedia.org/wiki/Tezos
+
+**Tezos Governance**
+
+[4] [Alternative Hangzhou proposal PsCUKj6wy](https://forum.tezosagora.org/t/hangzhou-pscukj6wy/3729)
+
+
+END
+
+
+In our markdown, we will use these as follows:
+
+<!-- MARKUPBIBTAG R-1 -->[1]<!-- ENDMARKUPBIBTAG -->
+
+In the Insert menu at Citation. We can drop down on our items loaded from the bibliography file.
+
+Updates as before please. The Update all tags should update the bibliography.
+
+
+Then also in the Insert menu, we should have
+
+Insert -> Bibliography. This inserts the generated bibliography as above. If we have a Leanpub style, you can put these around. In the text use <!-- MARKUPBIBLIOGRAPHY --> and <!-- ENDMARKUPBIBLIOGRAPHY --> so you can update it later on.
+
+{begin-hanging-paragraphs}
+
+{end-hanging-paragraphs}
+

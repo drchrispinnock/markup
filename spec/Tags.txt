@@ -1,0 +1,27 @@
+{#id: Tags_1_Handling}
+# Handling tags
+
+{#id: Tags_2_Tags}
+## Tags
+
+If there is a file in the project directory called tags.txt, you should read it and keep up to date.
+Ignore blank lines. Ignore lines beginning with #
+It will be a | seperated file - usually two fields. The first is the key and the second is the value.
+For example:
+
+noofbakers|2
+
+In our markdown, we will use these as follows:
+
+<!-- MARKUPTAG noofbakers-->2<!-- ENDMARKUPTAG -->
+
+The 2 here needs to be kept up to date with what is in the tags file.
+
+
+We need an Insert menu. Put Link, Cross-refence, Table and Image in there already.
+Then add Tag. When the user inserts a Tag, a little dialog pops out and they would type the tag (e.g. noofbakers). Then you insert <!-- MARKUPTAG noofbakers-->2<!-- ENDMARKUPTAG -->. If there is no value, use ??
+
+Add a setting to turn on quick tags. If the user types @noofbakers@, that expands to the expression above.
+
+Make sense?
+
