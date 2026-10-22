@@ -8,8 +8,7 @@
             <sparkle:version>1</sparkle:version>
             <sparkle:shortVersionString>0.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <enclosure url="https://github.com/drchrispinnock/markup/releases/download/v0.1/Markup-0.1.zip" length="2754931" type="application/octet-stream" sparkle:edSignature="lzOVgH5yEyjfLmVeItCh/cdWmTmRWAgO/hv9f+BaYSVyELi5d7theGif7gWix2i2lXaUvLjSX/4rAI9RswCKAQ=="/>
+            <enclosure url="https://github.com/drchrispinnock/markup/releases/download/v0.1/Markup-0.1.zip" length="3144726" type="application/octet-stream" sparkle:edSignature="3SG4ACSWKDXmgLkdLEZjfs5ujAQDkUmJ+jsCPlJgdcNOFcJZIxN65v6lbWovUTRE3OLW+ncauj3723pq+P30BQ=="/>
         </item>
     </channel>
 </rss>
