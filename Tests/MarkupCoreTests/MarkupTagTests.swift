@@ -79,6 +79,21 @@ import Testing
         #expect(Bibliography(text: "X|a | b").entry(for: "X")?.text == "a | b")
     }
 
+    @Test func entriesNeedNoKey() {
+        let text = "SEC|Tezos\nTezos — a self-amending crypto-ledger, L. M. Goodman, 2014\nR-2|Getting Started\nSite, 2024 | online"
+        let bibliography = Bibliography(text: text)
+        let first = "Tezos — a self-amending crypto-ledger, L. M. Goodman, 2014"
+        #expect(bibliography.entries.map(\.text) == [first, "Getting Started", "Site, 2024 | online"])
+        // A key is made from the text: the same every time, and one a tag
+        // name can be.
+        let key = Bibliography.key(for: first)
+        #expect(key.count == 8 && MarkupTag.isValid(name: key))
+        #expect(bibliography.entries.map(\.key) == [key, "R-2", Bibliography.key(for: "Site, 2024 | online")])
+        #expect(bibliography.citation(of: key) == "[1]")
+        #expect(Bibliography(text: text).citation(of: key) == "[1]")
+        #expect(bibliography.sections.map(\.title) == ["Tezos"])
+    }
+
     @Test func writesTheBibliography() {
         #expect(Bibliography(text: Self.file).markdown(hanging: true) == """
             <!-- MARKUPBIBLIOGRAPHY -->

@@ -1,7 +1,7 @@
-/// A project's `bibliography.txt`: a line per entry, its key and text
-/// separated by `|`, numbered from 1 in order. A line whose key is `SEC`
-/// starts a section, titled by its text. Blank lines and lines starting
-/// with `#` are ignored.
+/// A project's `bibliography.txt`: a line per entry, numbered from 1 in
+/// order. `SEC|title` starts a section. An entry is just its text, cited by
+/// a key made from it (eight hexadecimal digits), or `key|text` to choose
+/// the key. Blank lines and lines starting with `#` are ignored.
 ///
 /// Citations (`MarkupTag.citation`) show an entry's number, `[1]`. The
 /// bibliography itself is written between `<!-- MARKUPBIBLIOGRAPHY -->` and
@@ -31,8 +31,19 @@ public struct Bibliography: Equatable, Sendable {
     public init(text: String) {
         var sections: [Section] = []
         var number = 0
-        for (key, rest) in TagFile.fields(of: text) {
-            let value = rest.trimmingCharacters(in: .whitespaces)
+        for line in text.split(omittingEmptySubsequences: true, whereSeparator: \.isNewline) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { continue }
+            let key: String
+            let value: String
+            if let bar = trimmed.firstIndex(of: "|"), case let name = trimmed[..<bar].trimmingCharacters(in: .whitespaces),
+               MarkupTag.isValid(name: name) {
+                key = name
+                value = trimmed[trimmed.index(after: bar)...].trimmingCharacters(in: .whitespaces)
+            } else {
+                value = trimmed
+                key = Self.key(for: value)
+            }
             if key == Self.sectionKey {
                 sections.append(Section(title: value, entries: []))
                 continue
@@ -46,6 +57,11 @@ public struct Bibliography: Equatable, Sendable {
     }
 
     public var entries: [Entry] { sections.flatMap(\.entries) }
+
+    /// The key of an entry written without one: its text's hash.
+    public static func key(for text: String) -> String {
+        HeadingIDScheme.hash(text)
+    }
 
     /// The entry for `key`: the first, if more than one has it.
     public func entry(for key: String) -> Entry? {

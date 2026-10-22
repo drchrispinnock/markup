@@ -63,7 +63,7 @@ public enum HeadingIDScheme: String, CaseIterable, Sendable {
     }
 
     /// Eight hexadecimal digits from `text` (FNV-1a), the same every time.
-    private static func hash(_ text: String) -> String {
+    static func hash(_ text: String) -> String {
         var hash: UInt32 = 2_166_136_261
         for byte in text.utf8 {
             hash = (hash ^ UInt32(byte)) &* 16_777_619
