@@ -11,6 +11,8 @@ final class SettingsWindowController: NSWindowController {
     let headingIDFormPopUp = NSPopUpButton()
     let headingIDSchemePopUp = NSPopUpButton()
     let crossFileLinksPopUp = NSPopUpButton()
+    let hangingBibliographyCheckbox = NSButton(checkboxWithTitle: "Use Leanpub's hanging paragraphs", target: nil,
+                                               action: nil)
     let quickTagsCheckbox = NSButton(checkboxWithTitle: "Typing @name@ inserts the tag", target: nil, action: nil)
 
     static let formTitles: [HeadingAnchor.Form: String] = [
@@ -82,8 +84,10 @@ final class SettingsWindowController: NSWindowController {
 
         quickTagsCheckbox.target = self
         quickTagsCheckbox.action = #selector(quickTagsChanged(_:))
+        hangingBibliographyCheckbox.target = self
+        hangingBibliographyCheckbox.action = #selector(quickTagsChanged(_:))
         let tagsNote = NSTextField(wrappingLabelWithString:
-            "Tags show values from the project's tags.txt. Insert > Tag adds one.")
+            "Tags show values from the project's tags.txt, and citations numbers from its bibliography.txt.")
         tagsNote.textColor = .secondaryLabelColor
         tagsNote.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
 
@@ -98,6 +102,7 @@ final class SettingsWindowController: NSWindowController {
             [NSGridCell.emptyContentView, idNote],
             [NSTextField(labelWithString: "Links to other files:"), crossFileLinksPopUp],
             [NSTextField(labelWithString: "Quick tags:"), quickTagsCheckbox],
+            [NSTextField(labelWithString: "Bibliography:"), hangingBibliographyCheckbox],
             [NSGridCell.emptyContentView, tagsNote],
         ])
         grid.row(at: 3).topPadding = 12
@@ -121,6 +126,7 @@ final class SettingsWindowController: NSWindowController {
         showImagesDirectory()
         showHeadingIDs()
         quickTagsCheckbox.state = settings.quickTags ? .on : .off
+        hangingBibliographyCheckbox.state = settings.hangingBibliography ? .on : .off
     }
 
     @available(*, unavailable)
@@ -166,6 +172,7 @@ final class SettingsWindowController: NSWindowController {
 
     @objc func quickTagsChanged(_ sender: Any?) {
         settings.quickTags = quickTagsCheckbox.state == .on
+        settings.hangingBibliography = hangingBibliographyCheckbox.state == .on
     }
 
     private func showHeadingIDs() {

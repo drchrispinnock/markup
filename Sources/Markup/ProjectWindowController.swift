@@ -1,4 +1,5 @@
 import AppKit
+import MarkupCore
 
 /// A window for a folder (File > Open Project): a sidebar listing the folder's
 /// Markdown and plain text files, and the editor of the one chosen.
@@ -28,6 +29,9 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
     /// The values in the project's `tags.txt` as last read (`tagValues()`),
     /// until the folder changes: `.some(nil)` when there is no such file.
     var tagValuesOnDisk: [String: String]??
+    /// The project's `bibliography.txt` as last read (`bibliography()`),
+    /// likewise.
+    var bibliographyOnDisk: Bibliography??
 
     /// Documents still to ask about while closing.
     private var documentsToReview: [MarkdownDocument] = []

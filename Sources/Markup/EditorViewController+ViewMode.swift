@@ -169,8 +169,10 @@ extension EditorViewController: NSMenuItemValidation {
             return !isShowingMarkdown
         case #selector(editLink(_:)), #selector(insertCrossLink(_:)), #selector(insertImage(_:)):
             return !isShowingMarkdown
-        case #selector(insertTag(_:)):
+        case #selector(insertTag(_:)), #selector(insertCitation(_:)):
             return !isShowingMarkdown && !isPlainText
+        case #selector(insertBibliography(_:)):
+            return !isShowingMarkdown && !isPlainText && tagSources?.bibliography != nil
         case #selector(toggleSubscript(_:)):
             menuItem.state = subscriptButton.state
             return !isShowingMarkdown

@@ -22,7 +22,10 @@ extension MarkupTag {
     }
 
     var toolTip: String {
-        value == Self.unknownValue ? "Tag \(name): tags.txt has no value for it" : "Tag \(name)"
+        switch kind {
+        case .tag: isUnknown ? "Tag \(name): tags.txt has no value for it" : "Tag \(name)"
+        case .citation: isUnknown ? "Citation \(name): bibliography.txt has no entry for it" : "Citation \(name)"
+        }
     }
 
     /// The shading behind a tag's value: blue, or red (as a broken link's)
@@ -64,7 +67,7 @@ final class TagAttachmentCell: NSTextAttachmentCell {
                                    layoutManager: NSLayoutManager) {
         guard let (text, tag) = Self.text(at: charIndex, in: layoutManager) else { return }
         MainActor.assumeIsolated {
-            (tag.value == MarkupTag.unknownValue ? InlineStyle.brokenLinkColor : MarkupTag.color).setFill()
+            (tag.isUnknown ? InlineStyle.brokenLinkColor : MarkupTag.color).setFill()
             NSBezierPath(roundedRect: cellFrame, xRadius: 3, yRadius: 3).fill()
         }
         text.draw(at: NSPoint(x: cellFrame.minX + Self.padding, y: cellFrame.minY))

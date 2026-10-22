@@ -56,6 +56,7 @@ extension ProjectWindowController {
     func filesChanged() {
         filesOnDisk = nil
         tagValuesOnDisk = nil
+        bibliographyOnDisk = nil
         NotificationCenter.default.post(name: .markupProjectFilesChanged, object: self)
     }
 }

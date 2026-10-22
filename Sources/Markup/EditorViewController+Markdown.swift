@@ -16,6 +16,10 @@ extension EditorViewController {
         settings.imageFolders(forDocumentAt: document?.fileURL)
     }
 
+    /// Lines of Leanpub markup that the formatted view hides, as it hides a
+    /// line of only comments.
+    static let hiddenLines: Set<String> = ["{begin-hanging-paragraphs}", "{end-hanging-paragraphs}"]
+
     /// Markdown as the editor shows it: markers turned into styles, list
     /// markers and images. Used for editing and printing.
     static func formattedText(fromMarkdown markdown: String, imageFolders: [URL]) -> NSAttributedString {
@@ -46,6 +50,12 @@ extension EditorViewController {
                 var attributes = BlockStyle.code.attributes
                 attributes[.codeFence] = blockFence
                 text.append(NSAttributedString(string: line.text + terminator, attributes: attributes))
+            } else if line.style == .paragraph, line.list == nil, Self.hiddenLines.contains(line.text) {
+                // Kept as written, like a comment, and hidden.
+                var attributes = line.style.attributes
+                attributes[.paragraphStyle] = HTMLComment.hiddenLineStyle
+                text.append(HTMLComment.attachmentString(markdown: line.text, attributes: attributes))
+                text.append(NSAttributedString(string: terminator, attributes: attributes))
             } else {
                 var attributes = line.style.attributes
                 attributes[.headingAnchor] = line.anchor
@@ -110,8 +120,19 @@ extension EditorViewController {
     var markdown: String {
         guard !isShowingMarkdown else { return storage.string }
         let string = storage.string as NSString
+        var lines = markdownLines(from: 0, to: string.length)
+        // A trailing newline is followed by an empty last line.
+        if string.length > 0, string.character(at: string.length - 1) == 0x0A {
+            lines.append(Line(style: .paragraph, text: ""))
+        }
+        return MarkdownCodec.markdown(from: lines)
+    }
+
+    /// The Markdown lines of the text's lines from the one at `start` to the
+    /// one before `end`, or the one at `start` if that is `end`.
+    func markdownLines(from start: Int, to end: Int) -> [Line] {
         var lines: [Line] = []
-        var location = 0
+        var location = start
         repeat {
             let line = lineRange(at: location)
             let contents = contentsRange(of: line)
@@ -142,12 +163,8 @@ extension EditorViewController {
                                   anchor: contents.length > 0 ? headingAnchor(in: line) : nil))
             }
             location = NSMaxRange(line)
-        } while location < string.length
-        // A trailing newline is followed by an empty last line.
-        if string.length > 0, string.character(at: string.length - 1) == 0x0A {
-            lines.append(Line(style: .paragraph, text: ""))
-        }
-        return MarkdownCodec.markdown(from: lines)
+        } while location < end
+        return lines
     }
 
     /// The text of `range` with each tag, image and comment written as its

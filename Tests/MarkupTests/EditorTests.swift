@@ -1416,6 +1416,21 @@ import Testing
         #expect(editor.plainText(for: NSRange(location: 0, length: storage.length)) == markdown)
     }
 
+    @Test func hidesLeanpubHangingParagraphLines() {
+        let markdown = "{begin-hanging-paragraphs}\n\n[1] One\n{end-hanging-paragraphs}\nSee {begin-hanging-paragraphs} here"
+        editor.load(markdown: markdown)
+        #expect(storage.string == "\u{FFFC}\n\n[1] One\n\u{FFFC}\nSee {begin-hanging-paragraphs} here")
+        #expect(editor.markdown == markdown)
+        #expect(editor.plainText(for: NSRange(location: 0, length: storage.length)) == markdown)
+        let layoutManager = textView.layoutManager!
+        layoutManager.ensureLayout(for: textView.textContainer!)
+        func height(at index: Int) -> CGFloat {
+            layoutManager.lineFragmentRect(forGlyphAt: layoutManager.glyphIndexForCharacter(at: index), effectiveRange: nil).height
+        }
+        #expect(height(at: 0) < 1 && height(at: 11) < 1)
+        #expect(height(at: 3) > 10)
+    }
+
     @Test func typedCommentsAreHidden() {
         type("a <!-- note --> b")
         #expect(storage.string == "a \u{FFFC} b")

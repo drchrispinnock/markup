@@ -72,7 +72,10 @@ enum MainMenu {
         insertMenu.addItem(withTitle: "Image…", action: #selector(EditorViewController.insertImage(_:)), keyEquivalent: "")
         insertMenu.addItem(.separator())
         insertMenu.addItem(withTitle: "Tag…", action: #selector(EditorViewController.insertTag(_:)), keyEquivalent: "")
-        // Only project windows have a tags.txt.
+        insertMenu.addItem(withTitle: "Citation…", action: #selector(EditorViewController.insertCitation(_:)), keyEquivalent: "")
+        insertMenu.addItem(withTitle: "Bibliography", action: #selector(EditorViewController.insertBibliography(_:)),
+                           keyEquivalent: "")
+        // Only project windows have a tags.txt or bibliography.txt.
         insertMenu.addItem(withTitle: "Update Tags in Project",
                            action: #selector(ProjectWindowController.updateTagsInProject(_:)), keyEquivalent: "")
         mainMenu.addItem(submenu: insertMenu, title: "Insert")

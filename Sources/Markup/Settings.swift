@@ -13,6 +13,7 @@ final class Settings {
     static let headingIDSchemeKey = "MarkupHeadingIDScheme"
     static let crossFileLinksKey = "MarkupCrossFileLinks"
     static let quickTagsKey = "MarkupQuickTags"
+    static let hangingBibliographyKey = "MarkupHangingBibliography"
 
     let defaults: UserDefaults
 
@@ -74,6 +75,14 @@ final class Settings {
     var quickTags: Bool {
         get { defaults.bool(forKey: Self.quickTagsKey) }
         set { defaults.set(newValue, forKey: Self.quickTagsKey) }
+    }
+
+    /// Whether Insert > Bibliography writes the bibliography between
+    /// Leanpub's `{begin-hanging-paragraphs}` and `{end-hanging-paragraphs}`.
+    /// On unless turned off.
+    var hangingBibliography: Bool {
+        get { defaults.object(forKey: Self.hangingBibliographyKey) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Self.hangingBibliographyKey) }
     }
 
     /// A project window open when the app last quit: its folder, and the
