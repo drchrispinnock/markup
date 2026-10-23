@@ -3,6 +3,14 @@
     <channel>
         <title>Markup</title>
         <item>
+            <title>0.4</title>
+            <pubDate>Fri, 23 Oct 2026 10:01:25 +0100</pubDate>
+            <sparkle:version>5</sparkle:version>
+            <sparkle:shortVersionString>0.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/drchrispinnock/markup/releases/download/v0.4/Markup-0.4.zip" length="3330598" type="application/octet-stream" sparkle:edSignature="nS+RKSQLxelS8RRlhvVE9rqjbyF7ewSGu9uZPMAjsL/2oTdp4qTZE1X89XTYOBQf4cQgXgrx6QN5JM4wU5iHDQ=="/>
+        </item>
+        <item>
             <title>0.3.1</title>
             <pubDate>Thu, 22 Oct 2026 18:44:00 +0100</pubDate>
             <sparkle:version>4</sparkle:version>
@@ -17,14 +25,6 @@
             <sparkle:shortVersionString>0.3</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/drchrispinnock/markup/releases/download/v0.3/Markup-0.3.zip" length="3268789" type="application/octet-stream" sparkle:edSignature="xjkc5Ly2A3qRsIOlat7NxW0GrucrtcO+/a8m/ZjCRF/Gi0jFNvVzurJCaWujPmi2htDtR6To2ucZ58ng1DGwCQ=="/>
-        </item>
-        <item>
-            <title>0.2</title>
-            <pubDate>Thu, 22 Oct 2026 18:07:08 +0100</pubDate>
-            <sparkle:version>2</sparkle:version>
-            <sparkle:shortVersionString>0.2</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/drchrispinnock/markup/releases/download/v0.2/Markup-0.2.zip" length="3222976" type="application/octet-stream" sparkle:edSignature="X1RQqWFTeAJeci8FWFhrA20iV7FvOus7n8N9ca4laaIjnt06JisJ0Z4uqwMAqQJwgpxOHtSDz1onP667cCVaAg=="/>
         </item>
     </channel>
 </rss>
