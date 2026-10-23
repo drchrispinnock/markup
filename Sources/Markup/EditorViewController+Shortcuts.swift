@@ -5,6 +5,7 @@ extension EditorViewController {
     /// Turns Markdown syntax typed (or pasted) in the edited lines into what
     /// it stands for:
     /// - "# ", "## " and "### " make the line a heading of that level.
+    /// - "> " at the start of a paragraph makes it a quote line.
     /// - "- " makes a paragraph a bullet, and "[ ] " or "[x] " at the start of
     ///   a bullet makes it a checkbox.
     /// - "*italic*", "**bold**", "***both***", "~~strikethrough~~", "`code`",
@@ -60,6 +61,8 @@ extension EditorViewController {
                 _ = convertTrailingAnchor(of: lineRange(at: location), after: edit)
             } else if convertTrailingAnchor(of: line, after: edit) {
                 // A {#x} just typed at the end of a heading is its ID.
+            } else if convertQuotePrefix(of: line, after: edit) {
+                // A "> " typed at the start of a paragraph starts a quote.
             } else {
                 convertListPrefix(of: line, after: edit)
             }

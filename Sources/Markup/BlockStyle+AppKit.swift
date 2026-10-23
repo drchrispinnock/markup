@@ -25,7 +25,19 @@ extension BlockStyle {
         case .paragraph: .systemFont(ofSize: 15)
         case .code: .monospacedSystemFont(ofSize: 13.5, weight: .regular)
         case .table: .systemFont(ofSize: 15)
+        case .quote: .systemFont(ofSize: 15)
         }
+    }
+
+    /// How far a quote's text is indented, past the bar drawn beside it.
+    static let quoteIndent: CGFloat = 18
+
+    var paragraphStyle: NSParagraphStyle {
+        guard self == .quote else { return .default }
+        let style = NSMutableParagraphStyle()
+        style.firstLineHeadIndent = Self.quoteIndent
+        style.headIndent = Self.quoteIndent
+        return style
     }
 
     var attributes: [NSAttributedString.Key: Any] {
@@ -33,7 +45,7 @@ extension BlockStyle {
             .blockStyle: rawValue,
             .font: font,
             .foregroundColor: NSColor.textColor,
-            .paragraphStyle: NSParagraphStyle.default,
+            .paragraphStyle: paragraphStyle,
         ]
     }
 }

@@ -71,7 +71,7 @@ extension EditorViewController {
     }
 
     /// The style an empty last line would be typed in.
-    private var styleAtCaretForEmptyLine: BlockStyle {
+    var styleAtCaretForEmptyLine: BlockStyle {
         (textView.typingAttributes[.blockStyle] as? Int).flatMap(BlockStyle.init) ?? .paragraph
     }
 
@@ -97,9 +97,21 @@ extension EditorViewController {
 
 /// Shades the lines of code blocks across the full width of the text.
 final class EditorLayoutManager: NSLayoutManager {
+    /// The bar beside a blockquote's lines.
+    static let quoteBarColor = NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? NSColor(white: 1, alpha: 0.3) : NSColor(white: 0, alpha: 0.2)
+    }
+
     override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
         super.drawBackground(forGlyphRange: glyphsToShow, at: origin)
         guard let textStorage else { return }
+        // Quotes have a bar down their left, through all their lines.
+        Self.quoteBarColor.setFill()
+        enumerateLineFragments(forGlyphRange: glyphsToShow) { rect, _, container, glyphRange, _ in
+            let index = self.characterIndexForGlyph(at: glyphRange.location)
+            guard index < textStorage.length, textStorage.blockStyle(at: index) == .quote else { return }
+            NSRect(x: origin.x + container.lineFragmentPadding + 2, y: rect.minY + origin.y, width: 3, height: rect.height).fill()
+        }
         InlineStyle.codeBackground.setFill()
         enumerateLineFragments(forGlyphRange: glyphsToShow) { rect, _, container, glyphRange, _ in
             let index = self.characterIndexForGlyph(at: glyphRange.location)

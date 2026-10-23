@@ -51,9 +51,73 @@ import Testing
         ])
     }
 
-    @Test(arguments: ["-x", "-", "* star", "+ plus", "1. one", "   - odd indent", " - one space", "-\tTab"])
+    @Test(arguments: ["-x", "-", "* star", "+ plus", "1.one", "1.", "a. letter", "i. roman", "1234567890. long",
+                      "    - four spaces", "-\tTab"])
     func leavesOtherListSyntaxAsParagraphs(markdown: String) {
         #expect(MarkdownCodec.lines(fromMarkdown: markdown) == [Line(style: .paragraph, text: markdown)])
+    }
+
+    @Test func indentedUpToThreeSpacesIsAnItem() {
+        #expect(MarkdownCodec.lines(fromMarkdown: " - one space") == [item("one space")])
+        #expect(MarkdownCodec.lines(fromMarkdown: "   - three") == [item("three")])
+    }
+
+    private func numbered(_ text: String, _ number: Int, level: Int = 0) -> Line {
+        Line(style: .paragraph, text: text, list: ListItem(level: level, marker: .numbered, number: number))
+    }
+
+    @Test func readsNumberedItemsNestedAsCommonMarkHasIt() {
+        let lines = MarkdownCodec.lines(fromMarkdown: "1. One\n   1. Sub\n   2) Two\n      - Deeper\n2. Back\n  - Not nested in 2")
+        #expect(lines == [
+            numbered("One", 1), numbered("Sub", 1, level: 1), numbered("Two", 2, level: 1), item("Deeper", level: 2),
+            numbered("Back", 2), item("Not nested in 2"),
+        ])
+        // Two spaces under a bullet nest; under "1. " they don't.
+        #expect(MarkdownCodec.lines(fromMarkdown: "- a\n  1. b").map { $0.list?.level } == [0, 1])
+        #expect(MarkdownCodec.lines(fromMarkdown: "10. a\n    b. x\n    1. c").map { $0.list?.level } == [0, nil, nil])
+        #expect(MarkdownCodec.lines(fromMarkdown: "10. a\n    1. c").map { $0.list?.level } == [0, 1])
+        // A blank line doesn't end a list; text does.
+        #expect(MarkdownCodec.lines(fromMarkdown: "1. a\n\n   1. b\nText\n   1. c").map { $0.list?.level }
+            == [0, nil, 1, nil, 0])
+    }
+
+    @Test func writesNewItemsIndentedToTheirParentsText() {
+        let lines = [numbered("One", 1), numbered("Sub", 1, level: 1), item("Deeper", level: 2), numbered("Ten", 10),
+                     numbered("Under ten", 1, level: 1), item("Bullet"), numbered("Under bullet", 1, level: 1)]
+        let markdown = "1. One\n   1. Sub\n      - Deeper\n10. Ten\n    1. Under ten\n- Bullet\n  1. Under bullet"
+        #expect(MarkdownCodec.markdown(from: lines) == markdown)
+        #expect(MarkdownCodec.lines(fromMarkdown: markdown) == lines)
+    }
+
+    @Test func escapesTextThatLooksNumbered() {
+        #expect(MarkdownCodec.markdown(from: [Line(style: .paragraph, text: "1. not a list")]) == "1\\. not a list")
+        #expect(MarkdownCodec.lines(fromMarkdown: "1\\. not a list") == [Line(style: .paragraph, text: "1. not a list")])
+        #expect(MarkdownCodec.markdown(from: [Line(style: .paragraph, text: "2024) a year")]) == "2024\\) a year")
+        // Text indented too far to be an item isn't escaped.
+        #expect(MarkdownCodec.markdown(from: [Line(style: .paragraph, text: "    1. code")]) == "    1. code")
+        // Under an item, text indented to it would be a nested item.
+        #expect(MarkdownCodec.markdown(from: [numbered("a", 1), Line(style: .paragraph, text: "   - b")])
+            == "1. a\n   \\- b")
+    }
+
+    private func quote(_ text: String) -> Line {
+        Line(style: .quote, text: text)
+    }
+
+    @Test func readsQuotes() {
+        #expect(MarkdownCodec.lines(fromMarkdown: "> a\n>b\n>\n   > c\n>> d\n> # not a heading\n    > code") == [
+            quote("a"), quote("b"), quote(""), quote("c"), quote("> d"), quote("# not a heading"),
+            Line(style: .paragraph, text: "    > code"),
+        ])
+        // A quote ends a list.
+        #expect(MarkdownCodec.lines(fromMarkdown: "1. a\n> q\n   1. b").map { $0.list?.level } == [0, nil, 0])
+    }
+
+    @Test func writesQuotes() {
+        #expect(MarkdownCodec.markdown(from: [quote("a"), quote(""), quote("# b")]) == "> a\n>\n> # b")
+        #expect(MarkdownCodec.markdown(from: [Line(style: .paragraph, text: "> not a quote")]) == "\\> not a quote")
+        #expect(MarkdownCodec.lines(fromMarkdown: "\\> not a quote") == [Line(style: .paragraph, text: "> not a quote")])
+        #expect(MarkdownCodec.markdown(from: [Line(style: .paragraph, text: "a > b")]) == "a > b")
     }
 
     @Test func listItemTextIsNotParsedFurther() {
@@ -102,6 +166,8 @@ import Testing
         "> quote\n```\n# in a code block\n```",
         "- Milk\n  - Free range\n- [ ] Call\n- [x] Paid\n",
         "- \n- [ ] \n- [ ]\n-\n- - x\n- \\[ ] x\n- \\\\[x] y\n\\- p\n  \\- q\n   - r",
+        "1. a\n1. b\n   7) c\n  - d\n\n3. e\n1\\. f\n1\\\\. g\n\\1. h\n - i\n    - j",
+        "> a\n>\n>b\n  > c\n>> d\n\\> e\n\\\\> f\n    > g\n- > h",
     ])
     func roundTrips(markdown: String) {
         #expect(MarkdownCodec.markdown(from: MarkdownCodec.lines(fromMarkdown: markdown)) == markdown)

@@ -349,6 +349,153 @@ import Testing
         #expect(editor.markdown == "-x")
     }
 
+    @Test func numberSpaceStartsANumberedListAndReturnContinuesIt() {
+        type("1. Milk")
+        #expect(textView.string == "\u{FFFC}Milk")
+        press(enter)
+        type("Eggs")
+        press(enter)
+        type("Bread")
+        #expect(editor.markdown == "1. Milk\n2. Eggs\n3. Bread")
+    }
+
+    @Test func numberedListsNestAndEnd() {
+        type("1. Eggs")
+        press(enter)
+        press(tab)
+        type("Free range")
+        press(enter)
+        type("Organic")
+        #expect(editor.markdown == "1. Eggs\n   1. Free range\n   2. Organic")
+        press(enter)
+        press(enter)
+        type("Milk")
+        #expect(editor.markdown == "1. Eggs\n   1. Free range\n   2. Organic\n2. Milk")
+        press(enter)
+        press(enter)
+        type("After")
+        #expect(editor.markdown == "1. Eggs\n   1. Free range\n   2. Organic\n2. Milk\nAfter")
+    }
+
+    @Test func aListStartsAtTheNumberTyped() {
+        type("3. Three")
+        press(enter)
+        type("Four")
+        #expect(editor.markdown == "3. Three\n4. Four")
+    }
+
+    @Test func savingNumbersItemsInOrder() {
+        editor.load(markdown: "1. a\n1. b\n   - x\n   1. y\n   1. z\n1. c\n- bullet\n1. again")
+        #expect(editor.markdown == "1. a\n2. b\n   - x\n   1. y\n   2. z\n3. c\n- bullet\n1. again")
+        // Deleting an item renumbers those after it.
+        let b = (textView.string as NSString).range(of: "b\n")
+        step { textView.insertText("", replacementRange: NSRange(location: b.location - 1, length: b.length + 1)) }
+        #expect(editor.markdown.hasPrefix("1. a\n   - x\n   1. y\n   2. z\n2. c\n"))
+    }
+
+    @Test func numbersShowByLevel() {
+        #expect(ListItem.numberText(3, level: 0) == "3.")
+        #expect(ListItem.numberText(4, level: 1) == "iv.")
+        #expect(ListItem.numberText(1999, level: 1) == "mcmxcix.")
+        #expect(ListItem.numberText(2, level: 2) == "b.")
+        #expect(ListItem.numberText(28, level: 2) == "ab.")
+        #expect(ListItem.numberText(1, level: 3) == "1.")
+        editor.load(markdown: "1. a\n   1. b\n   2. c\n      1. d\n2. e")
+        let storage = textView.textStorage!
+        let starts = (textView.string as NSString).components(separatedBy: "\n").reduce(into: [0]) { $0.append($0.last! + ($1 as NSString).length + 1) }
+        #expect(starts.dropLast().map { location in
+            ListItem.numberText(storage.listNumber(atLineStart: location),
+                                level: storage.attribute(.listLevel, at: location, effectiveRange: nil) as! Int)
+        } == ["1.", "i.", "ii.", "a.", "2."])
+    }
+
+    @Test func numbersIndentTheirTextAndDontTick() {
+        editor.load(markdown: "1. a")
+        let style = textView.textStorage!.attribute(.paragraphStyle, at: 1, effectiveRange: nil) as! NSParagraphStyle
+        #expect(style.headIndent == ListItem.numberWidth)
+        step { #expect(textView.markerClickHandler?(0) == false) }
+        #expect(editor.markdown == "1. a")
+    }
+
+    @Test func copyingWritesNumberedListsAsMarkdown() {
+        editor.load(markdown: "Intro\n1. a\n1. b\n   1. c")
+        select(0, textView.string.utf16.count)
+        #expect(editor.plainText(for: textView.selectedRange()) == "Intro\n1. a\n2. b\n   1. c")
+    }
+
+    @Test func pastedNumberedListsBecomeLists() {
+        step { textView.insertText("1. a\n2. b\n   1. c", replacementRange: textView.selectedRange()) }
+        #expect(editor.markdown == "1. a\n2. b\n   1. c")
+        #expect(!textView.string.contains("1."))
+    }
+
+    @Test func greaterThanSpaceStartsAQuote() {
+        type("> Quoted")
+        #expect(textView.string == "Quoted")
+        #expect(textView.textStorage!.blockStyle(at: 0) == .quote)
+        #expect(editor.stylePopUp.selectedTag() == BlockStyle.quote.rawValue)
+        #expect(editor.markdown == "> Quoted")
+    }
+
+    @Test func greaterThanWithoutASpaceIsText() {
+        type(">x and a > b")
+        #expect(textView.textStorage!.blockStyle(at: 0) == .paragraph)
+        // Markdown would read it as a quote, so it is escaped.
+        #expect(editor.markdown == "\\>x and a > b")
+    }
+
+    @Test func returnContinuesAQuoteAndEndsItWhenEmpty() {
+        type("> One")
+        press(enter)
+        type("Two")
+        press(enter)
+        press(enter)
+        type("After")
+        #expect(editor.markdown == "> One\n> Two\nAfter")
+    }
+
+    @Test func backspaceAtTheStartOfAQuoteLineEndsTheQuote() {
+        editor.load(markdown: "Before\n> Quoted")
+        select(7)
+        press(backspace)
+        #expect(editor.markdown == "Before\nQuoted")
+        document.undoManager?.undo()
+        #expect(editor.markdown == "Before\n> Quoted")
+    }
+
+    @Test func quoteCanBeChosenAndKeepsInlineStyles() {
+        editor.load(markdown: "Some **bold** words")
+        select(2)
+        step {
+            editor.stylePopUp.selectItem(withTag: BlockStyle.quote.rawValue)
+            editor.stylePopUp.sendAction(editor.stylePopUp.action, to: editor.stylePopUp.target)
+        }
+        #expect(editor.markdown == "> Some **bold** words")
+        let style = textView.textStorage!.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as! NSParagraphStyle
+        #expect(style.headIndent == BlockStyle.quoteIndent)
+    }
+
+    @Test func emptyQuoteLinesStayInTheQuote() {
+        let markdown = "> a\n>\n> b"
+        editor.load(markdown: markdown)
+        #expect(editor.markdown == markdown)
+        select(0, textView.string.utf16.count)
+        #expect(editor.plainText(for: textView.selectedRange()) == markdown)
+    }
+
+    @Test func pastedQuotesBecomeQuotes() {
+        step { textView.insertText("> a\n>\n> b", replacementRange: textView.selectedRange()) }
+        #expect(editor.markdown == "> a\n>\n> b")
+        #expect(textView.string == "a\n\nb")
+    }
+
+    @Test func greaterThanInCodeStaysCode() {
+        editor.load(markdown: "```\nx\n```")
+        select(0)
+        type("> ")
+        #expect(editor.markdown == "```\n> x\n```")
+    }
+
     @Test func listsRoundTrip() {
         let markdown = "# Shopping\n- Milk\n  - Semi skimmed\n- [ ] Bread\n- [x] Eggs\n\nDone."
         editor.load(markdown: markdown)

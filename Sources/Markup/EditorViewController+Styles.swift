@@ -110,7 +110,7 @@ extension EditorViewController {
     func insertNewlineAfterHeading() -> Bool {
         let selection = textView.selectedRange()
         let contents = contentsRange(of: lineRange(at: selection.location))
-        guard styleAtCaret != .paragraph, styleAtCaret != .code, selection.length == 0,
+        guard styleAtCaret.isHeading, selection.length == 0,
               selection.location == NSMaxRange(contents) else {
             return false
         }

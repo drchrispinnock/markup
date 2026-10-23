@@ -337,7 +337,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
               let raw = storage.attribute(.listMarker, at: line.location, effectiveRange: nil) as? Int,
               let marker = ListMarker(rawValue: raw) else { return nil }
         let level = storage.attribute(.listLevel, at: line.location, effectiveRange: nil) as? Int ?? 0
-        return ListItem(level: level, marker: marker)
+        let number = storage.attribute(.listNumber, at: line.location, effectiveRange: nil) as? Int ?? 1
+        return ListItem(level: level, marker: marker, number: number)
     }
 
     // MARK: - Undoable changes
@@ -405,6 +406,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         return switch commandSelector {
         case #selector(NSResponder.insertNewline(_:)):
             insertNewlineInTable() || insertNewlineInList() || insertNewlineAfterHeading() || insertNewlineInCode()
+                || insertNewlineInQuote()
+        case #selector(NSResponder.deleteBackward(_:)):
+            deleteBackwardInQuote()
         case #selector(NSResponder.insertTab(_:)):
             moveToCell(forward: true) || changeListLevel(by: 1)
         case #selector(NSResponder.insertBacktab(_:)):
@@ -446,6 +450,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
                                  range editedRange: NSRange, changeInLength delta: Int) {
         MainActor.assumeIsolated {
             scheduleLinkCheck()
+            // Once the layout manager has taken in the edit.
+            let edited = editedRange
+            DispatchQueue.main.async { [weak self] in self?.redrawListNumbers(after: edited) }
             guard editedMask.contains(.editedCharacters), !isShowingMarkdown, let undoManager,
                   !undoManager.isUndoing, !undoManager.isRedoing else { return }
             for line in lineRanges(in: editedRange) where line.length > 0 {

@@ -144,7 +144,8 @@ extension EditorViewController {
                 location = NSMaxRange(cells.last!)
                 continue
             }
-            if let item = listItem(at: line) {
+            if var item = listItem(at: line) {
+                if item.marker == .numbered { item.number = storage.listNumber(atLineStart: line.location) }
                 let text = inlineMarkdown(in: NSRange(location: contents.location + 1, length: contents.length - 1))
                 lines.append(Line(style: .paragraph, text: text, list: item))
             } else if line.length > 0, storage.blockStyle(at: line.location) == .code {
@@ -157,8 +158,10 @@ extension EditorViewController {
                                   fence: startsBlock ? fence ?? CodeFence() : nil))
             } else {
                 // A heading whose text has all been deleted is gone, ID and
-                // all, rather than left as a bare "##".
-                let style = contents.length > 0 ? storage.blockStyle(at: line.location) : .paragraph
+                // all, rather than left as a bare "##". An empty quote line
+                // stays one.
+                let blockStyle = line.length > 0 ? storage.blockStyle(at: line.location) : .paragraph
+                let style = contents.length > 0 || blockStyle == .quote ? blockStyle : .paragraph
                 lines.append(Line(style: style, text: inlineMarkdown(in: contents),
                                   anchor: contents.length > 0 ? headingAnchor(in: line) : nil))
             }
@@ -226,7 +229,7 @@ extension EditorViewController {
         }
         var text = ""
         storage.enumerateAttribute(.listMarker, in: range) { value, run, _ in
-            guard let raw = value as? Int, let marker = ListMarker(rawValue: raw) else {
+            guard value != nil else {
                 // Inline styles are written line by line. Code is as typed.
                 let string = storage.string as NSString
                 var location = run.location
@@ -241,6 +244,9 @@ extension EditorViewController {
                         text += MarkdownCodec.markdown(from: [Line(style: storage.blockStyle(at: location),
                                                                    text: inlineMarkdown(in: segment),
                                                                    anchor: headingAnchor(in: line))])
+                    } else if segment == contentsRange(of: line), line.length > 0, storage.blockStyle(at: location) == .quote {
+                        // So is a whole quote line, after its "> ".
+                        text += MarkdownCodec.markdown(from: [Line(style: .quote, text: inlineMarkdown(in: segment))])
                     } else {
                         text += segment.length > 0 && storage.blockStyle(at: location) == .code
                             ? markdownText(in: segment) : inlineMarkdown(in: segment)
@@ -251,8 +257,7 @@ extension EditorViewController {
                 return
             }
             for index in run.location..<NSMaxRange(run) {
-                let level = storage.attribute(.listLevel, at: index, effectiveRange: nil) as? Int ?? 0
-                text += ListItem(level: level, marker: marker).markdown
+                text += markdownPrefix(ofListLineAt: index)
             }
         }
         return text

@@ -20,7 +20,8 @@ extension EditorViewController {
         let text = (storage.string as NSString).substring(with: contentsRange(of: line))
         guard let prefix = MarkdownCodec.listPrefix(of: text), edit.location < line.location + prefix.length else { return }
         // Nest at most one level deeper than the item above.
-        let item = ListItem(level: min(prefix.item.level, maxLevel(forLineAt: line)), marker: prefix.item.marker)
+        let item = ListItem(level: min(prefix.item.level, maxLevel(forLineAt: line)), marker: prefix.item.marker,
+                            number: prefix.item.number)
         replaceMarkdownPrefix(NSRange(location: line.location, length: prefix.length), with: item)
     }
 
@@ -71,7 +72,8 @@ extension EditorViewController {
             return true
         }
 
-        let next = ListItem(level: item.level, marker: item.marker == .bullet ? .bullet : .unchecked)
+        // A new task starts unticked.
+        let next = ListItem(level: item.level, marker: item.marker == .checked ? .unchecked : item.marker)
         let insertion = NSMutableAttributedString(string: "\n", attributes: item.lineAttributes)
         insertion.append(next.markerString)
         replaceCharacters(in: selection, with: insertion)
@@ -112,7 +114,8 @@ extension EditorViewController {
     /// one there.
     func toggleCheckbox(at index: Int) -> Bool {
         let line = lineRange(at: index)
-        guard line.location == index, let item = listItem(at: line), item.marker != .bullet else { return false }
+        guard line.location == index, let item = listItem(at: line), item.marker == .checked || item.marker == .unchecked
+        else { return false }
         let toggled = ListItem(level: item.level, marker: item.marker == .checked ? .unchecked : .checked)
         let marker = NSRange(location: index, length: 1)
         changeAttributes(in: marker) {
@@ -120,6 +123,46 @@ extension EditorViewController {
         }
         undoManager?.setActionName(toggled.marker == .checked ? "Check" : "Uncheck")
         return true
+    }
+
+    // MARK: - Numbers
+
+    /// The Markdown that starts the list line at `lineStart`: indented to
+    /// line up with the text of the item it is nested in, as saving writes
+    /// it, then its marker, with its number if it has one.
+    func markdownPrefix(ofListLineAt lineStart: Int) -> String {
+        guard var item = listItem(at: lineRange(at: lineStart)) else { return "" }
+        if item.marker == .numbered { item.number = storage.listNumber(atLineStart: lineStart) }
+        return String(repeating: " ", count: markdownIndent(ofListLineAt: lineStart)) + item.markerMarkdown
+    }
+
+    /// How far the list line at `lineStart` is indented in Markdown: to the
+    /// text of the item it is nested in, after its "- " or "1. ".
+    private func markdownIndent(ofListLineAt lineStart: Int) -> Int {
+        guard let item = listItem(at: lineRange(at: lineStart)), item.level > 0 else { return 0 }
+        var location = lineStart
+        while location > 0 {
+            let above = lineRange(at: location - 1)
+            guard let parent = listItem(at: above), parent.level >= item.level - 1 else { break }
+            location = above.location
+            guard parent.level == item.level - 1 else { continue }
+            let marker = parent.marker == .numbered ? "\(storage.listNumber(atLineStart: above.location)). " : "- "
+            return markdownIndent(ofListLineAt: above.location) + marker.count
+        }
+        return item.level * 2
+    }
+
+    /// Numbers are worked out from the lines above when drawn, so an edit
+    /// can change those of the list items below it, which are redrawn.
+    func redrawListNumbers(after edit: NSRange) {
+        guard let layoutManager = textView.layoutManager, NSMaxRange(edit) <= storage.length else { return }
+        var end = NSMaxRange(lineRange(at: min(NSMaxRange(edit), max(storage.length - 1, 0))))
+        while end < storage.length, storage.attribute(.listMarker, at: end, effectiveRange: nil) != nil {
+            end = NSMaxRange(lineRange(at: end))
+        }
+        let start = lineRange(at: min(edit.location, max(storage.length - 1, 0))).location
+        guard end > start else { return }
+        layoutManager.invalidateDisplay(forCharacterRange: NSRange(location: start, length: end - start))
     }
 
     /// Keeps the caret from resting before a list marker, where typing would

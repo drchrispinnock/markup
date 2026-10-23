@@ -1,13 +1,19 @@
 /// One line of a document: its text without any Markdown heading or list
 /// marker, its style, and its list item if it is one. List items are always
 /// paragraph style. The first line of a code block has the block's fence. A
-/// heading can have an ID (its anchor), which only headings write.
+/// heading can have an ID (its anchor), which only headings write. A quote
+/// line's text is what follows its "> ".
 public struct Line: Equatable, Sendable {
     public var style: BlockStyle
     public var text: String
     public var list: ListItem?
     public var fence: CodeFence?
     public var anchor: HeadingAnchor?
+    /// The spaces and ">" (and space) a quote line was read with, such as
+    /// ">" or "  > ", so that it is written back as it was. None for one
+    /// made anew, which is written after "> ". Lines are equal whatever this
+    /// is.
+    public var quotePrefix = QuotePrefix()
 
     public init(style: BlockStyle, text: String, list: ListItem? = nil, fence: CodeFence? = nil,
                 anchor: HeadingAnchor? = nil) {
@@ -18,11 +24,23 @@ public struct Line: Equatable, Sendable {
         self.anchor = anchor
     }
 
-    public var isHeading: Bool { style.rawValue > 0 && list == nil }
+    public var isHeading: Bool { style.isHeading && list == nil }
 
     /// A heading with text. The editor saves one without text as an empty
     /// line, so only these have IDs and are listed to link to.
     public var isTitledHeading: Bool { isHeading && !text.isEmpty }
+}
+
+/// How a quote line was written: kept so it is written back the same, but
+/// not part of what the line is.
+public struct QuotePrefix: Equatable, Sendable {
+    public var text: String?
+
+    public init(_ text: String? = nil) {
+        self.text = text
+    }
+
+    public static func == (_: QuotePrefix, _: QuotePrefix) -> Bool { true }
 }
 
 /// The opening fence of a code block: its number of backticks and the info
@@ -51,13 +69,22 @@ public struct CodeFence: Hashable, Sendable {
 ///
 /// - A line starting with one to three `#` followed by a space (or nothing)
 ///   is a heading.
-/// - A line starting with an even number of spaces and "- " is a list item,
-///   nested one level per two spaces. "[ ] " or "[x] " after the dash makes
-///   it a task.
+/// - A line starting with "- ", or a number of one to nine digits and "." or
+///   ")" and a space, is a list item: a bullet or a numbered item. "[ ] " or
+///   "[x] " after the dash makes it a task. Items nest as CommonMark has it
+///   (`ListContext`): an item indented to the text of the item above, or up
+///   to three columns more, is nested in it. Each item keeps the spaces and
+///   marker it was read with, and one made anew is indented to the text of
+///   the item it is nested in.
 /// - Lines between an opening fence (three or more backticks, then perhaps a
 ///   language) and the next line of exactly that many backticks are code,
 ///   kept exactly as they are. A fence with no lines before its closing
 ///   line, or none at all, is text.
+/// - A line starting with up to three spaces and ">" is a quote line: its
+///   text is what follows the ">" and one space, if there is one, and isn't
+///   read further (so "> # x" is a quote of "# x"). A line following a
+///   quote line without its own ">" is a paragraph, though CommonMark would
+///   carry the quote on.
 /// - A table (`MarkdownTable`) is table lines, kept exactly as they are.
 /// - A heading's ID (`HeadingAnchor`) is `{#id: x}` or `{#x}` on the line
 ///   above it, or `{#x}` at its end, but not both: a heading with one at its
@@ -65,7 +92,9 @@ public struct CodeFence: Hashable, Sendable {
 ///
 /// Text that would otherwise read back as one of these is escaped with a
 /// backslash, so it survives a save: a paragraph "# not a heading" is written
-/// as "\# not a heading", and a bullet "[ ] not a task" as "- \[ ] not a task".
+/// as "\# not a heading", "> not a quote" as "\> not a quote", "1. not a
+/// list" as "1\. not a list", and a bullet
+/// "[ ] not a task" as "- \[ ] not a task".
 /// A paragraph that would open a code block, or be a heading's ID, is
 /// escaped the same way, and so is a heading ending in what would be its ID.
 ///
@@ -75,9 +104,11 @@ public enum MarkdownCodec {
     public static func lines(fromMarkdown markdown: String) -> [Line] {
         let raw = markdown.split(separator: "\n", omittingEmptySubsequences: false)
         var lines: [Line] = []
+        var lists = ListContext()
         var index = 0
         while index < raw.count {
             if let fence = CodeFence(line: raw[index]), let end = closingFence(of: fence, in: raw, after: index) {
+                lists.end()
                 for (offset, text) in raw[index + 1..<end].enumerated() {
                     lines.append(Line(style: .code, text: String(text), fence: offset == 0 ? fence : nil))
                 }
@@ -85,16 +116,19 @@ public enum MarkdownCodec {
                 continue
             }
             let startsBlock = { (line: Int) in
-                structuredLine(raw[line]) != nil || CodeFence(line: raw[line]) != nil
+                headingLine(raw[line]) != nil || quotePrefixLength(of: raw[line]) != nil || ListPrefix(of: raw[line]) != nil
+                    || CodeFence(line: raw[line]) != nil
             }
             if let rows = MarkdownTable.rowCount(startingAt: index, in: raw, startsBlock: startsBlock) {
+                lists.end()
                 lines += raw[index..<index + rows].map { Line(style: .table, text: String($0)) }
                 index += rows
                 continue
             }
             if HeadingAnchor(line: raw[index]) != nil, index + 1 < raw.count,
-               var heading = structuredLine(raw[index + 1]), heading.isHeading, heading.anchor == nil {
+               var heading = headingLine(raw[index + 1]), heading.anchor == nil {
                 heading.anchor = HeadingAnchor(line: raw[index])
+                lists.end()
                 lines.append(heading)
                 index += 2
                 continue
@@ -102,12 +136,14 @@ public enum MarkdownCodec {
             let text = raw[index]
             if text.first == "\\", HeadingAnchor(line: text.drop(while: { $0 == "\\" })) != nil, index + 1 < raw.count,
                attachesAnchorAbove(raw[index + 1]) {
+                lists.end()
                 lines.append(Line(style: .paragraph, text: String(text.dropFirst())))
             } else if text.first == "\\", let fence = CodeFence(line: text.drop(while: { $0 == "\\" })),
                closingFence(of: fence, in: raw, after: index) != nil {
+                lists.end()
                 lines.append(Line(style: .paragraph, text: String(text.dropFirst())))
             } else {
-                var line = line(fromMarkdown: text)
+                var line = line(fromMarkdown: text, lists: &lists)
                 // A comment that carries on over lines is kept with its
                 // first line, as it was written.
                 if HTMLComment.opensUnclosed(text),
@@ -125,17 +161,36 @@ public enum MarkdownCodec {
     public static func markdown(from lines: [Line]) -> String {
         // Code blocks become their lines between fences. A block starts at a
         // line with a fence or after a line that isn't code.
-        var written: [(text: String, isParagraph: Bool)] = []
+        var written: [(text: String, kind: WrittenKind)] = []
+        // The column each level's item's text starts at, where items made
+        // anew nested in it start.
+        var columns: [Int] = []
         var index = 0
         while index < lines.count {
             guard lines[index].style == .code else {
-                if lines[index].isHeading, let anchor = lines[index].anchor, anchor.form != .attribute {
-                    written.append((anchor.markdown, false))
+                let line = lines[index]
+                if line.isHeading, let anchor = line.anchor, anchor.form != .attribute {
+                    written.append((anchor.markdown, .other))
                 }
-                written.append((markdown(from: lines[index]), lines[index].style == .paragraph && lines[index].list == nil))
+                if let item = line.list {
+                    let prefix = item.written ?? String(repeating: " ", count: indent(ofLevel: item.level, in: columns))
+                        + item.markerMarkdown
+                    if let read = ListPrefix(of: prefix) {
+                        columns = Array(columns.prefix(item.level))
+                        while columns.count < item.level { columns.append(columns.last ?? 0) }
+                        columns.append(read.contentColumn)
+                    }
+                    let needsEscape = item.marker == .bullet && taskMarker(of: line.text.drop(while: { $0 == "\\" })) != nil
+                    written.append((prefix + (needsEscape ? "\\" : "") + line.text, .list))
+                } else {
+                    let isParagraph = line.style == .paragraph
+                    written.append((markdown(from: line), isParagraph ? .paragraph : .other))
+                    if !isParagraph || !line.text.allSatisfy({ $0 == " " }) { columns = [] }
+                }
                 index += 1
                 continue
             }
+            columns = []
             var end = index + 1
             while end < lines.count, lines[end].style == .code, lines[end].fence == nil { end += 1 }
             var fence = lines[index].fence ?? CodeFence()
@@ -144,16 +199,32 @@ public enum MarkdownCodec {
                 fence.backticks += 1
             }
             let marker = String(repeating: "`", count: fence.backticks)
-            written.append((marker + fence.info, false))
-            written += lines[index..<end].map { ($0.text, false) }
-            written.append((marker, false))
+            written.append((marker + fence.info, .other))
+            written += lines[index..<end].map { ($0.text, .other) }
+            written.append((marker, .other))
             index = end
+        }
+        // Escape paragraphs that would read back as list items, working down
+        // so each sees the lists open above it as they will be read.
+        var texts = written.map(\.text)
+        var lists = ListContext()
+        for index in written.indices {
+            switch written[index].kind {
+            case .list:
+                if let prefix = ListPrefix(of: texts[index]), let level = lists.level(of: prefix) {
+                    lists.add(prefix, at: level)
+                }
+            case .paragraph:
+                texts[index] = escapingList(texts[index], lists: lists)
+                if !texts[index].allSatisfy({ $0 == " " }) { lists.end() }
+            case .other:
+                lists.end()
+            }
         }
         // Escape paragraphs that would read back as opening a code block, or
         // as the ID of a heading below, working up so each sees the lines
         // below as they will be written.
-        var texts = written.map(\.text)
-        for index in written.indices.reversed() where written[index].isParagraph {
+        for index in written.indices.reversed() where written[index].kind == .paragraph {
             if HeadingAnchor(line: texts[index].drop(while: { $0 == "\\" })) != nil, index + 1 < texts.count,
                attachesAnchorAbove(Substring(texts[index + 1])) {
                 texts[index] = "\\" + texts[index]
@@ -174,16 +245,25 @@ public enum MarkdownCodec {
         return end
     }
 
-    /// The list item that `text` starts with, and the length of its Markdown
-    /// prefix. The prefix is ASCII, so the length is the same in characters
-    /// and in UTF-16 units.
+    private enum WrittenKind {
+        case paragraph
+        case list
+        case other
+    }
+
+    /// The indent of an item made anew at `level`: that of the text of the
+    /// item it is nested in, given each level's text's column.
+    private static func indent(ofLevel level: Int, in columns: [Int]) -> Int {
+        guard level > 0 else { return 0 }
+        return level <= columns.count ? columns[level - 1] : (columns.last ?? 0) + 2 * (level - columns.count)
+    }
+
+    /// The list item that `text` starts with, out of context, and the length
+    /// of its Markdown prefix: one level per two spaces. The prefix is ASCII,
+    /// so the length is the same in characters and in UTF-16 units.
     public static func listPrefix(of text: some StringProtocol) -> (item: ListItem, length: Int)? {
-        let spaces = text.prefix(while: { $0 == " " }).count
-        guard spaces.isMultiple(of: 2) else { return nil }
-        let rest = text.dropFirst(spaces)
-        guard rest.hasPrefix("- ") else { return nil }
-        let marker = taskMarker(of: rest.dropFirst(2)) ?? .bullet
-        return (ListItem(level: spaces / 2, marker: marker), spaces + 2 + marker.markdown.count)
+        guard let prefix = ListPrefix(of: text) else { return nil }
+        return (ListItem(level: prefix.indent / 2, marker: prefix.marker, number: prefix.number), prefix.length)
     }
 
     /// The heading that `text` starts with, as typed: one to three `#` and a
@@ -202,58 +282,117 @@ public enum MarkdownCodec {
         return nil
     }
 
-    private static func line(fromMarkdown raw: Substring) -> Line {
-        if let line = structuredLine(raw) {
+    /// The line that `raw` is, given the lists open above it, which it
+    /// updates.
+    private static func line(fromMarkdown raw: Substring, lists: inout ListContext) -> Line {
+        if let heading = headingLine(raw) {
+            lists.end()
+            return heading
+        }
+        if let length = quotePrefixLength(of: raw) {
+            lists.end()
+            var line = Line(style: .quote, text: String(raw.dropFirst(length)))
+            line.quotePrefix = QuotePrefix(String(raw.prefix(length)))
             return line
         }
+        if let prefix = ListPrefix(of: raw), let level = lists.level(of: prefix) {
+            lists.add(prefix, at: level)
+            var text = raw.dropFirst(prefix.length)
+            if prefix.marker == .bullet, text.first == "\\", taskMarker(of: text.drop(while: { $0 == "\\" })) != nil {
+                text = text.dropFirst()
+            }
+            var item = ListItem(level: level, marker: prefix.marker, number: prefix.number)
+            item.written = String(raw.prefix(prefix.length))
+            return Line(style: .paragraph, text: String(text), list: item)
+        }
+        defer { if !raw.allSatisfy({ $0 == " " }) { lists.end() } }
         let spaces = raw.prefix(while: { $0 == " " })
         let rest = raw.dropFirst(spaces.count)
-        if rest.first == "\\", structuredLine(Substring(spaces + rest.drop(while: { $0 == "\\" }))) != nil {
+        if rest.first == "\\", isHeadingOrQuote(Substring(spaces + rest.drop(while: { $0 == "\\" }))) {
             return Line(style: .paragraph, text: String(spaces) + rest.dropFirst())
         }
+        if let escape = listEscape(in: raw), escape.backslashes > 0, readsAsList(escape.unescaped, lists: lists) {
+            var text = String(raw)
+            text.remove(at: text.index(text.startIndex, offsetBy: escape.offset))
+            return Line(style: .paragraph, text: text)
+        }
         return Line(style: .paragraph, text: String(raw))
+    }
+
+    /// Where a backslash goes to keep `text` from reading as a list item:
+    /// before the dash, or between a number and its "." or ")"; how many
+    /// are there already; and the text without them.
+    private static func listEscape(in text: some StringProtocol) -> (offset: Int, backslashes: Int, unescaped: String)? {
+        let spaces = text.prefix(while: { $0 == " " })
+        let rest = text.dropFirst(spaces.count)
+        let digits = rest.prefix(while: { $0.isASCII && $0.isNumber })
+        // A dash, perhaps after backslashes; or a number then backslashes.
+        let start = digits.isEmpty ? rest : rest.dropFirst(digits.count)
+        let backslashes = start.prefix(while: { $0 == "\\" }).count
+        guard digits.isEmpty || !start.isEmpty else { return nil }
+        // A number is escaped after its digits, so a backslash before them
+        // is text.
+        guard !digits.isEmpty || start.dropFirst(backslashes).first == "-" else { return nil }
+        let unescaped = String(spaces) + digits + start.dropFirst(backslashes)
+        return (spaces.count + digits.count, backslashes, unescaped)
+    }
+
+    /// Whether `text` would read as a list item, with `lists` open above it.
+    private static func readsAsList(_ text: String, lists: ListContext) -> Bool {
+        ListPrefix(of: text).flatMap(lists.level(of:)) != nil
+    }
+
+    /// `text`, a paragraph, with a backslash added if it would read as a
+    /// list item, with `lists` open above it, or did before its backslashes.
+    private static func escapingList(_ text: String, lists: ListContext) -> String {
+        guard let escape = listEscape(in: text), readsAsList(escape.unescaped, lists: lists) else { return text }
+        var escaped = text
+        escaped.insert("\\", at: escaped.index(escaped.startIndex, offsetBy: escape.offset))
+        return escaped
+    }
+
+    /// The length of the quote marker that `text` starts with: up to three
+    /// spaces, ">", and a space if there is one.
+    public static func quotePrefixLength(of text: some StringProtocol) -> Int? {
+        let spaces = text.prefix(while: { $0 == " " }).count
+        let rest = text.dropFirst(spaces)
+        guard spaces <= 3, rest.first == ">" else { return nil }
+        return spaces + 1 + (rest.dropFirst().first == " " ? 1 : 0)
+    }
+
+    private static func isHeadingOrQuote(_ raw: Substring) -> Bool {
+        headingLine(raw) != nil || quotePrefixLength(of: raw) != nil
     }
 
     /// Whether `raw` is a heading that takes an ID from the line above: one
     /// without one at its end.
     private static func attachesAnchorAbove(_ raw: Substring) -> Bool {
-        guard let line = structuredLine(raw) else { return false }
-        return line.isHeading && line.anchor == nil
+        guard let line = headingLine(raw) else { return false }
+        return line.anchor == nil
     }
 
-    /// The heading or list item that `raw` is, or nil for a paragraph. A
-    /// heading's text loses the ID at its end, if it has one.
-    private static func structuredLine(_ raw: Substring) -> Line? {
-        if let level = headingLevel(of: raw), let style = BlockStyle(rawValue: level) {
-            let text = String(raw.dropFirst(level + 1))
-            if let trailing = HeadingAnchor.trailing(in: text) {
-                return Line(style: style, text: trailing.text, anchor: trailing.anchor)
-            }
-            return Line(style: style, text: HeadingAnchor.unescapingTrailing(text))
+    /// The heading that `raw` is, or nil. Its text loses the ID at its end,
+    /// if it has one.
+    private static func headingLine(_ raw: Substring) -> Line? {
+        guard let level = headingLevel(of: raw), let style = BlockStyle(rawValue: level) else { return nil }
+        let text = String(raw.dropFirst(level + 1))
+        if let trailing = HeadingAnchor.trailing(in: text) {
+            return Line(style: style, text: trailing.text, anchor: trailing.anchor)
         }
-        if let prefix = listPrefix(of: raw) {
-            var text = raw.dropFirst(prefix.length)
-            if prefix.item.marker == .bullet, text.first == "\\",
-               taskMarker(of: text.drop(while: { $0 == "\\" })) != nil {
-                text = text.dropFirst()
-            }
-            return Line(style: .paragraph, text: String(text), list: prefix.item)
-        }
-        return nil
+        return Line(style: style, text: HeadingAnchor.unescapingTrailing(text))
     }
 
-    /// A line that isn't code.
+    /// A line that isn't code or a list item.
     private static func markdown(from line: Line) -> String {
         guard line.style != .table else { return line.text }
-        if let item = line.list {
-            let needsEscape = item.marker == .bullet && taskMarker(of: line.text.drop(while: { $0 == "\\" })) != nil
-            return item.markdown + (needsEscape ? "\\" : "") + line.text
-        }
         guard line.style != .paragraph else {
             let spaces = line.text.prefix(while: { $0 == " " })
             let rest = line.text.dropFirst(spaces.count)
-            let needsEscape = structuredLine(Substring(spaces + rest.drop(while: { $0 == "\\" }))) != nil
+            let needsEscape = isHeadingOrQuote(Substring(spaces + rest.drop(while: { $0 == "\\" })))
             return needsEscape ? String(spaces) + "\\" + rest : line.text
+        }
+        guard line.style != .quote else {
+            return (line.quotePrefix.text ?? (line.text.isEmpty ? ">" : "> ")) + line.text
         }
         let marker = String(repeating: "#", count: line.style.rawValue)
         // Text ending as an ID would be read as one, unless an ID follows.
