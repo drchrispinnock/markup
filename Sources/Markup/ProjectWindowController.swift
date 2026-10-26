@@ -62,7 +62,8 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
         ])
 
         let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebar)
-        sidebarItem.minimumThickness = 160
+        // Wide enough for names a few folders deep, under the project folder.
+        sidebarItem.minimumThickness = 200
         sidebarItem.maximumThickness = 400
         splitViewController.addSplitViewItem(sidebarItem)
         let editorItem = NSSplitViewItem(viewController: editorContainer)

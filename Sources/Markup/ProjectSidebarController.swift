@@ -1,9 +1,11 @@
 import AppKit
 import UniformTypeIdentifiers
 
-/// A project window's sidebar: the folder's subfolders and Markdown and other
-/// plain text files, as an outline. Hidden files and packages are left out. It follows changes
-/// on disk, keeping folders open and the selection where they were.
+/// A project window's sidebar: the project folder at the top, and inside it
+/// its subfolders and Markdown and other plain text files, as an outline
+/// whose folders open and close. Hidden files and packages are left out. It
+/// follows changes on disk, keeping folders open and the selection where
+/// they were.
 @MainActor
 final class ProjectSidebarController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
     /// A file or folder in the outline. Folders read their contents when
@@ -86,6 +88,9 @@ final class ProjectSidebarController: NSViewController, NSOutlineViewDataSource,
         outlineView.dataSource = self
         outlineView.delegate = self
         outlineView.autosaveExpandedItems = false
+        // The project folder starts open.
+        outlineView.reloadData()
+        outlineView.expandItem(rootNode)
 
         let scrollView = NSScrollView()
         scrollView.documentView = outlineView
@@ -110,9 +115,11 @@ final class ProjectSidebarController: NSViewController, NSOutlineViewDataSource,
             return node.url
         }
         let selected = (outlineView.item(atRow: outlineView.selectedRow) as? Node)?.url
+        let rootWasExpanded = outlineView.isItemExpanded(rootNode)
         rootNode = Node(url: root, isFolder: true)
         isSelecting = true
         outlineView.reloadData()
+        if rootWasExpanded { outlineView.expandItem(rootNode) }
         for url in expanded {
             if let node = node(for: url) { outlineView.expandItem(node) }
         }
@@ -148,11 +155,12 @@ final class ProjectSidebarController: NSViewController, NSOutlineViewDataSource,
         outlineView.reloadData(forRowIndexes: IndexSet(0..<outlineView.numberOfRows), columnIndexes: [0])
     }
 
-    /// The node for `url`, reading the folders on the way to it.
+    /// The node for `url`, the project folder or something in it, reading
+    /// the folders on the way to it.
     func node(for url: URL) -> Node? {
         let rootComponents = root.pathComponents
         let components = url.pathComponents
-        guard components.count > rootComponents.count, Array(components.prefix(rootComponents.count)) == rootComponents
+        guard components.count >= rootComponents.count, Array(components.prefix(rootComponents.count)) == rootComponents
         else { return nil }
         var node = rootNode
         for name in components.dropFirst(rootComponents.count) {
@@ -164,12 +172,14 @@ final class ProjectSidebarController: NSViewController, NSOutlineViewDataSource,
 
     // MARK: - NSOutlineViewDataSource
 
+    // The outline's one top item is the project folder.
+
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
-        ((item as? Node) ?? rootNode).children.count
+        (item as? Node)?.children.count ?? 1
     }
 
     func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
-        ((item as? Node) ?? rootNode).children[index]
+        (item as? Node)?.children[index] ?? rootNode
     }
 
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
@@ -184,6 +194,8 @@ final class ProjectSidebarController: NSViewController, NSOutlineViewDataSource,
         let cell = outlineView.makeView(withIdentifier: identifier, owner: nil) as? FileCell ?? FileCell()
         cell.identifier = identifier
         cell.textField?.stringValue = node.name
+        // The project folder's name stands out.
+        cell.textField?.font = node === rootNode ? .boldSystemFont(ofSize: NSFont.systemFontSize) : .systemFont(ofSize: NSFont.systemFontSize)
         let symbol = node.isFolder ? "folder" : Node.isMarkdown(node.url) ? "doc.richtext" : "doc.plaintext"
         cell.imageView?.image = NSImage(systemSymbolName: symbol,
                                         accessibilityDescription: nil)

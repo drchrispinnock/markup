@@ -1860,6 +1860,25 @@ import Testing
         #expect(project.sidebar.rootNode.children[0].children.map(\.name) == ["c.markdown"])
     }
 
+    @Test func theProjectFolderIsAtTheTopAndOpensAndCloses() {
+        let outline = project.sidebar.outlineView
+        _ = project.sidebar.view
+        let root = project.sidebar.rootNode
+        #expect(outline.numberOfRows > 1)
+        #expect(outline.item(atRow: 0) as? ProjectSidebarController.Node === root)
+        #expect(outline.isItemExpanded(root))
+        #expect(outline.parent(forItem: outline.item(atRow: 1)) as? ProjectSidebarController.Node === root)
+        #expect(project.sidebar.node(for: folder) === root)
+        outline.collapseItem(root)
+        #expect(outline.numberOfRows == 1)
+        // Following the folder on disk keeps it closed, or open.
+        project.sidebar.reload()
+        #expect(outline.numberOfRows == 1)
+        outline.expandItem(project.sidebar.rootNode)
+        project.sidebar.reload()
+        #expect(outline.isItemExpanded(project.sidebar.rootNode))
+    }
+
     @Test func showsOneFileAtATimeAndKeepsTheOthersEdits() throws {
         let a = try document("a.md"), b = try document("b.md")
         project.show(a)
