@@ -59,9 +59,8 @@ public struct InlineSpan: Equatable, Sendable {
 /// Bold, italic, strikethrough, code, subscript and superscript within a
 /// line: `**bold**`, `*italic*`, `***both***`, `~~strikethrough~~`,
 /// `` `code` ``, `H~2~O`, `x^2^` and `==highlight==`, and links,
-/// `[text](destination)`. Tags, images and HTML comments are kept whole,
-/// as their Markdown. A
-/// backslash makes an asterisk, tilde, backtick, caret, equals sign or
+/// `[text](destination)`. Tags, images, HTML comments and the HTML tags
+/// `HTMLTag` reads are kept whole, as their Markdown. A backslash makes an asterisk, tilde, backtick, caret, equals sign or
 /// bracket literal (`\*`, `\~`, `` \` ``, `\^`, `\=`, `\[`, `\]`).
 ///
 /// Code spans are read first, as in CommonMark: a run of backticks up to the
@@ -156,11 +155,13 @@ public enum InlineMarkdown {
     }
 
     /// The parts of `text` that are kept whole, in order: tags, then
-    /// comments, then images. Tags come first, since theirs are comments,
-    /// and comments next: an image inside one is part of it.
+    /// comments, then HTML tags (`HTMLTag`), then images. Tags come first,
+    /// since theirs are comments, and comments next: an image inside one is
+    /// part of it.
     static func wholeRanges(in text: String) -> [Range<Int>] {
         var wholes = MarkupTag.tags(in: text).map(\.range)
         wholes += HTMLComment.ranges(in: text).filter { comment in !wholes.contains { $0.overlaps(comment) } }
+        wholes += HTMLTag.tags(in: text).map(\.range).filter { tag in !wholes.contains { $0.overlaps(tag) } }
         wholes += MarkdownImage.images(in: text).map(\.range).filter { image in !wholes.contains { $0.overlaps(image) } }
         return wholes.sorted { $0.lowerBound < $1.lowerBound }
     }

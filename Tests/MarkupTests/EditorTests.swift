@@ -2371,3 +2371,123 @@ import Testing
         #expect((operation.view as? NSTextView)?.string == "\nStacey's\nText")
     }
 }
+
+/// HTML tags the formatted view shows: <br>, <img>, <p> and </p>.
+@MainActor
+@Suite struct HTMLTagEditorTests {
+    let document: MarkdownDocument
+    let editor: EditorViewController
+    let suiteName = "MarkupTests-\(UUID().uuidString)"
+    let site: URL
+
+    init() throws {
+        _ = NSApplication.shared
+        site = FileManager.default.temporaryDirectory.appendingPathComponent("MarkupSite-\(UUID())")
+        try FileManager.default.createDirectory(at: site.appendingPathComponent("assets"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: site.appendingPathComponent("_posts"), withIntermediateDirectories: true)
+        try ImageTests.writePNG(width: 40, height: 20, to: site.appendingPathComponent("assets/pie.png"))
+
+        document = MarkdownDocument()
+        document.undoManager?.groupsByEvent = false
+        document.makeWindowControllers()
+        editor = document.editor
+        editor.settings = Settings(defaults: UserDefaults(suiteName: suiteName)!)
+        editor.settings.imagesDirectory = site
+    }
+
+    private func cleanUp() {
+        editor.settings.defaults.removePersistentDomain(forName: suiteName)
+        try? FileManager.default.removeItem(at: site)
+    }
+
+    private var textView: NSTextView { editor.textView }
+
+    private func step(_ action: () -> Void) {
+        document.undoManager?.beginUndoGrouping()
+        action()
+        document.undoManager?.endUndoGrouping()
+    }
+
+    private func type(_ text: String) {
+        for character in text {
+            step { textView.insertText(String(character), replacementRange: textView.selectedRange()) }
+        }
+    }
+
+    @Test func aLineBreakInsideALineBreaksIt() {
+        defer { cleanUp() }
+        editor.load(markdown: "One<br>two<BR />three")
+        #expect(textView.string == "One\u{2028}two\u{2028}three")
+        #expect(editor.markdown == "One<br>two<BR />three")
+        // Still one line.
+        #expect(editor.lineRange(at: 0).length == textView.string.utf16.count)
+    }
+
+    @Test func aLineBreakEndingALineIsHidden() {
+        defer { cleanUp() }
+        editor.load(markdown: "**Stacey's**<br>\nTel: 01268<br> \nCards.")
+        #expect(textView.string == "Stacey's\u{FFFC}\nTel: 01268\u{FFFC} \nCards.")
+        #expect(editor.markdown == "**Stacey's**<br>\nTel: 01268<br> \nCards.")
+    }
+
+    @Test func paragraphTagsAreHiddenAndLinesOfThemTakeNoSpace() {
+        defer { cleanUp() }
+        editor.load(markdown: "<p>\nText <p class=\"x\">here</p>\n</p>")
+        #expect(textView.string == "\u{FFFC}\nText \u{FFFC}here\u{FFFC}\n\u{FFFC}")
+        let style = textView.textStorage!.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        #expect(style === HTMLComment.hiddenLineStyle)
+        #expect(editor.markdown == "<p>\nText <p class=\"x\">here</p>\n</p>")
+    }
+
+    @Test func anImageShowsAsAnImage() throws {
+        defer { cleanUp() }
+        let html = #"<img src="assets/pie.png" style="float:right; margin:20px;" alt="Pie">"#
+        editor.load(markdown: "Before " + html + " after")
+        let attachment = try #require(textView.textStorage!.attribute(.attachment, at: 7, effectiveRange: nil) as? NSTextAttachment)
+        #expect((attachment.attachmentCell as? ImageAttachmentCell)?.picture != nil)
+        #expect(editor.markdown == "Before " + html + " after")
+        // Reloading reads it again.
+        editor.reloadImages(nil)
+        #expect(editor.markdown == "Before " + html + " after")
+    }
+
+    @Test func typedTagsConvertAndUndo() {
+        defer { cleanUp() }
+        editor.load(markdown: "")
+        type("a<br>b")
+        #expect(textView.string == "a\u{2028}b")
+        #expect(editor.markdown == "a<br>b")
+        document.undoManager?.undo()
+        #expect(editor.markdown == "a<br>")
+        editor.load(markdown: "")
+        type("Line<br>")
+        #expect(textView.string == "Line\u{FFFC}")
+        #expect(editor.markdown == "Line<br>")
+    }
+
+    @Test func aLineBreakFollowsTheTextAfterIt() {
+        defer { cleanUp() }
+        editor.load(markdown: "One<br>two")
+        textView.setSelectedRange(NSRange(location: 7, length: 0))
+        for _ in 0..<3 { step { textView.deleteBackward(nil) } }
+        #expect(textView.string == "One\u{FFFC}")
+        #expect(textView.selectedRange().location == 4)
+        // Undoing the last deletion brings back the break with the "t".
+        document.undoManager?.undo()
+        #expect(textView.string == "One\u{2028}t")
+        #expect(editor.markdown == "One<br>t")
+    }
+
+    @Test func otherHTMLStaysText() {
+        defer { cleanUp() }
+        editor.load(markdown: "<span>x</span> \\<br> <div>")
+        #expect(textView.string == "<span>x</span> \\<br> <div>")
+        #expect(editor.markdown == "<span>x</span> \\<br> <div>")
+    }
+
+    @Test func copyingWritesTheTagsBack() {
+        defer { cleanUp() }
+        editor.load(markdown: "One<br>two")
+        #expect(editor.plainText(for: NSRange(location: 0, length: 7)) == "One<br>two")
+    }
+}

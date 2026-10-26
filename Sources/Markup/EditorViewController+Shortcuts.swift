@@ -14,6 +14,8 @@ extension EditorViewController {
     /// - "![alt](path)" anywhere in a line becomes the image.
     /// - "[text](destination)" anywhere in a line becomes a link.
     /// - "<!-- comment -->" anywhere in a line is hidden.
+    /// - "<br>", "<img src=...>", "<p>" and "</p>" anywhere in a line become
+    ///   what they stand for (`HTMLTag.attachmentString`).
     /// - A variable, "<!-- MARKUPTAG name-->value<!-- ENDMARKUPTAG -->", and
     ///   with the quick variables setting, "@name@", anywhere in a line
     ///   becomes the variable.
@@ -73,6 +75,9 @@ extension EditorViewController {
             convertImages(in: lineRange(at: location), after: edit)
             convertLinks(in: lineRange(at: location), after: edit)
             convertComments(in: lineRange(at: location), after: edit)
+            // After comments, which may hold HTML.
+            convertHTMLTags(in: lineRange(at: location), after: edit)
+            settleLineBreaks(in: lineRange(at: location))
             location = NSMaxRange(lineRange(at: location))
         }
         convertTables(after: edit)
@@ -154,6 +159,60 @@ extension EditorViewController {
                 : selection.location > range.location ? range.location + 1
                 : selection.location
             textView.setSelectedRange(NSRange(location: caret, length: 0))
+        }
+    }
+
+    /// Replaces typed or pasted HTML tags that the edit touched with what
+    /// they stand for.
+    private func convertHTMLTags(in line: NSRange, after edit: NSRange) {
+        let contents = contentsRange(of: line)
+        let string = storage.string as NSString
+        for match in HTMLTag.tags(in: string.substring(with: contents)).reversed() {
+            let range = NSRange(location: contents.location + match.range.lowerBound, length: match.range.count)
+            let touched = edit.length > 0
+                ? NSIntersectionRange(range, edit).length > 0
+                : range.location < edit.location && edit.location < NSMaxRange(range)
+            guard touched, string.rangeOfCharacter(from: CharacterSet(charactersIn: "\u{FFFC}"), range: range).location == NSNotFound,
+                  !isInlineCode(range), !followsUnclosedBacktick(range, in: contents)
+            else { continue }
+
+            let selection = textView.selectedRange()
+            let rest = string.substring(with: NSRange(location: NSMaxRange(range), length: NSMaxRange(contents) - NSMaxRange(range)))
+            let shown = match.tag.attachmentString(markdown: string.substring(with: range),
+                                                   attributes: storage.attributes(at: range.location, effectiveRange: nil),
+                                                   folders: imageFolders, endsLine: rest.allSatisfy { $0 == " " })
+            replaceCharacters(in: range, with: shown)
+            let caret = selection.location >= NSMaxRange(range) ? selection.location - range.length + 1
+                : selection.location > range.location ? range.location + 1
+                : selection.location
+            textView.setSelectedRange(NSRange(location: caret, length: 0))
+        }
+    }
+
+    /// Shows each <br> in `line` as its place there needs, since edits move
+    /// text to after one or take it away: a line separator with text after
+    /// it, hidden at the end of the line (`HTMLTag.attachmentString`).
+    private func settleLineBreaks(in line: NSRange) {
+        let contents = contentsRange(of: line)
+        let string = storage.string as NSString
+        var breaks: [(range: NSRange, markdown: String, isSeparator: Bool)] = []
+        storage.enumerateAttribute(.markdownHTML, in: contents) { value, run, _ in
+            guard let markdown = value as? String, HTMLTag.tags(in: markdown).first?.tag.kind == .lineBreak else { return }
+            for index in run.location..<NSMaxRange(run) {
+                breaks.append((NSRange(location: index, length: 1), markdown, string.character(at: index) == 0x2028))
+            }
+        }
+        for found in breaks.reversed() {
+            let rest = string.substring(with: NSRange(location: NSMaxRange(found.range),
+                                                      length: NSMaxRange(contents) - NSMaxRange(found.range)))
+            let endsLine = rest.allSatisfy { $0 == " " }
+            guard endsLine == found.isSeparator else { continue }
+            let selection = textView.selectedRange()
+            var attributes = storage.attributes(at: found.range.location, effectiveRange: nil)
+            attributes[.attachment] = nil
+            replaceCharacters(in: found.range, with: HTMLTag(kind: .lineBreak).attachmentString(
+                markdown: found.markdown, attributes: attributes, folders: [], endsLine: endsLine))
+            textView.setSelectedRange(selection)
         }
     }
 

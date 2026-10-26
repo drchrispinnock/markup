@@ -84,7 +84,7 @@ extension EditorViewController {
         storage.enumerateAttribute(.markdownImage, in: NSRange(location: 0, length: storage.length)) { value, run, _ in
             guard let markdown = value as? String else { return }
             for index in run.location..<NSMaxRange(run) {
-                guard let image = MarkdownImage.images(in: markdown).first?.image else { continue }
+                guard let image = MarkdownImage.image(written: markdown) else { continue }
                 let attributes = storage.attributes(at: index, effectiveRange: nil)
                 let fresh = image.attachmentString(markdown: markdown, attributes: attributes, folders: folders)
                 storage.addAttribute(.attachment, value: fresh.attribute(.attachment, at: 0, effectiveRange: nil)!,
