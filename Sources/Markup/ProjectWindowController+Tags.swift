@@ -73,6 +73,14 @@ extension ProjectWindowController {
 
 extension ProjectWindowController: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        menuItem.action == #selector(updateVariablesInProject(_:)) ? !tagSources(settings: .shared).isEmpty : true
+        switch menuItem.action {
+        case #selector(updateVariablesInProject(_:)):
+            return !tagSources(settings: .shared).isEmpty
+        case #selector(duplicateItem(_:)), #selector(renameItem(_:)), #selector(deleteItem(_:)):
+            // Not the project folder itself.
+            return (menuItem.representedObject as? URL).map { $0.standardizedFileURL != root } ?? false
+        default:
+            return true
+        }
     }
 }

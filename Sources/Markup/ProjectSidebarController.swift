@@ -7,7 +7,7 @@ import UniformTypeIdentifiers
 /// follows changes on disk, keeping folders open and the selection where
 /// they were.
 @MainActor
-final class ProjectSidebarController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
+final class ProjectSidebarController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate {
     /// A file or folder in the outline. Folders read their contents when
     /// first asked.
     final class Node {
@@ -66,6 +66,8 @@ final class ProjectSidebarController: NSViewController, NSOutlineViewDataSource,
     var onChoose: ((URL) -> Void)?
     /// Called when anything in the folder changes.
     var onFolderChange: (() -> Void)?
+    /// Where the menu's items are sent: the project window.
+    weak var menuTarget: AnyObject?
 
     init(root: URL) {
         self.root = root
@@ -88,6 +90,7 @@ final class ProjectSidebarController: NSViewController, NSOutlineViewDataSource,
         outlineView.dataSource = self
         outlineView.delegate = self
         outlineView.autosaveExpandedItems = false
+        outlineView.menu = makeMenu()
         // The project folder starts open.
         outlineView.reloadData()
         outlineView.expandItem(rootNode)
@@ -101,6 +104,31 @@ final class ProjectSidebarController: NSViewController, NSOutlineViewDataSource,
         watcher = DirectoryWatcher(url: root) { [weak self] in
             self?.reload()
             self?.onFolderChange?()
+        }
+    }
+
+    /// The menu for a right click: New File, New Folder, Duplicate, Rename
+    /// and Delete, sent to `menuTarget` (`ProjectWindowController+Files`), each
+    /// carrying the item clicked.
+    private func makeMenu() -> NSMenu {
+        let menu = NSMenu()
+        menu.delegate = self
+        menu.addItem(withTitle: "New File…", action: #selector(ProjectWindowController.newFile(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "New Folder…", action: #selector(ProjectWindowController.newFolder(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Duplicate", action: #selector(ProjectWindowController.duplicateItem(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Rename…", action: #selector(ProjectWindowController.renameItem(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Delete", action: #selector(ProjectWindowController.deleteItem(_:)), keyEquivalent: "")
+        return menu
+    }
+
+    /// The item right-clicked, or the project folder for a click below the
+    /// rows.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        let clicked = (outlineView.item(atRow: outlineView.clickedRow) as? Node)?.url ?? root
+        for item in menu.items {
+            item.target = menuTarget
+            item.representedObject = clicked
         }
     }
 
@@ -136,11 +164,14 @@ final class ProjectSidebarController: NSViewController, NSOutlineViewDataSource,
             outlineView.deselectAll(nil)
             return
         }
+        // The folders on the way to it, from the top, opening each so the
+        // outline knows the next. It knows only the items of open folders.
+        var folder = url.standardizedFileURL.deletingLastPathComponent()
         var ancestors: [Node] = []
-        var parent = outlineView.parent(forItem: node) as? Node
-        while let folder = parent {
-            ancestors.insert(folder, at: 0)
-            parent = outlineView.parent(forItem: folder) as? Node
+        while let ancestor = self.node(for: folder) {
+            ancestors.insert(ancestor, at: 0)
+            guard ancestor !== rootNode else { break }
+            folder = folder.deletingLastPathComponent()
         }
         ancestors.forEach { outlineView.expandItem($0) }
         let row = outlineView.row(forItem: node)

@@ -1830,6 +1830,13 @@ import Testing
         return document
     }
 
+    /// Runs `action` as one edit of `document`, as an event would.
+    private func step(_ document: MarkdownDocument, _ action: () -> Void) {
+        document.undoManager?.beginUndoGrouping()
+        action()
+        document.undoManager?.endUndoGrouping()
+    }
+
     /// A narrow editor, as a split view restores it, shows the text below
     /// the header, rather than stretching the header's separator downwards.
     @Test func narrowSavedSplitStillShowsTheText() throws {
@@ -1877,6 +1884,83 @@ import Testing
         outline.expandItem(project.sidebar.rootNode)
         project.sidebar.reload()
         #expect(outline.isItemExpanded(project.sidebar.rootNode))
+    }
+
+    @Test func theMenuIsForTheItemClicked() throws {
+        let menu = try #require(project.sidebar.outlineView.menu)
+        #expect(menu.items.filter { !$0.isSeparatorItem }.map(\.title) == ["New File…", "New Folder…", "Duplicate", "Rename…", "Delete"])
+        // Below the rows, it is for the project folder, which can't be
+        // duplicated or deleted.
+        project.sidebar.menuNeedsUpdate(menu)
+        #expect(menu.items.allSatisfy { $0.isSeparatorItem || ($0.representedObject as? URL)?.path == folder.path })
+        #expect(menu.items.allSatisfy { $0.isSeparatorItem || $0.target === project })
+        let duplicate = menu.items.first { $0.title == "Duplicate" }!
+        #expect(!project.validateMenuItem(duplicate))
+        duplicate.representedObject = folder.appendingPathComponent("a.md")
+        #expect(project.validateMenuItem(duplicate))
+    }
+
+    @Test func newFilesAndFoldersGoInTheFolderClicked() throws {
+        let notes = folder.appendingPathComponent("notes")
+        #expect(ProjectWindowController.folder(for: notes) == notes)
+        #expect(ProjectWindowController.folder(for: notes.appendingPathComponent("c.markdown")).path == notes.path)
+        #expect(ProjectWindowController.uniqueName("Untitled", extension: "md", in: notes) == "Untitled.md")
+        let file = try project.createFile(named: " Chapter ", in: notes)
+        #expect(file.lastPathComponent == "Chapter.md")
+        #expect(try Data(contentsOf: file).isEmpty)
+        #expect(project.sidebar.node(for: file) != nil)
+        #expect(ProjectWindowController.uniqueName("Chapter", extension: "md", in: notes) == "Chapter 2.md")
+        #expect(try project.createFile(named: "list.txt", in: notes).lastPathComponent == "list.txt")
+        #expect(throws: ProjectWindowController.NameError.self) { try project.createFile(named: "Chapter.md", in: notes) }
+        #expect(throws: ProjectWindowController.NameError.self) { try project.createFile(named: "a/b", in: notes) }
+        #expect(throws: ProjectWindowController.NameError.self) { try project.createFile(named: " ", in: notes) }
+        let made = try project.createFolder(named: "drafts", in: notes)
+        #expect(ProjectWindowController.isFolder(made))
+        #expect(project.sidebar.node(for: made)?.isFolder == true)
+    }
+
+    @Test func duplicatesAreNamedAsFinderNamesThem() throws {
+        let a = folder.appendingPathComponent("a.md")
+        #expect(try project.duplicate(a).lastPathComponent == "a copy.md")
+        #expect(try project.duplicate(a).lastPathComponent == "a copy 2.md")
+        #expect(try String(contentsOf: folder.appendingPathComponent("a copy.md"), encoding: .utf8) == "A text")
+        let notes = try project.duplicate(folder.appendingPathComponent("notes"))
+        #expect(notes.lastPathComponent == "notes copy")
+        #expect(FileManager.default.fileExists(atPath: notes.appendingPathComponent("c.markdown").path))
+    }
+
+    @Test func renamingMovesTheDocumentsInside() throws {
+        let c = try document("notes/c.markdown")
+        let b = try document("b.md")
+        project.show(b)
+        project.show(c)
+        step(c) { c.editor.textView.insertText("New ", replacementRange: NSRange(location: 0, length: 0)) }
+        let renamed = try project.rename(folder.appendingPathComponent("notes"), to: "Notes 2026")
+        #expect(renamed.lastPathComponent == "Notes 2026")
+        #expect(c.fileURL?.path == folder.appendingPathComponent("Notes 2026/c.markdown").path)
+        #expect(c.isDocumentEdited && c.editor.markdown == "New C")
+        #expect(b.fileURL?.lastPathComponent == "b.md")
+        #expect(project.sidebar.outlineView.row(forItem: project.sidebar.node(for: c.fileURL!))
+            == project.sidebar.outlineView.selectedRow)
+        // A file, and one changing only its case.
+        #expect(try project.rename(folder.appendingPathComponent("a.md"), to: "Alpha.md").lastPathComponent == "Alpha.md")
+        #expect(try project.rename(folder.appendingPathComponent("Alpha.md"), to: "alpha.md").lastPathComponent == "alpha.md")
+        #expect(throws: ProjectWindowController.NameError.self) {
+            try project.rename(folder.appendingPathComponent("alpha.md"), to: "b.md")
+        }
+    }
+
+    @Test func deletingClosesTheDocumentsInside() throws {
+        project.moveToTrash = { try FileManager.default.removeItem(at: $0) }
+        let c = try document("notes/c.markdown")
+        let b = try document("b.md")
+        project.show(b)
+        project.show(c)
+        try project.trash(folder.appendingPathComponent("notes"))
+        #expect(!FileManager.default.fileExists(atPath: folder.appendingPathComponent("notes").path))
+        #expect(project.documents.map { $0 === b } == [true])
+        #expect(project.currentDocument == nil)
+        #expect(project.sidebar.node(for: folder.appendingPathComponent("notes")) == nil)
     }
 
     @Test func showsOneFileAtATimeAndKeepsTheOthersEdits() throws {

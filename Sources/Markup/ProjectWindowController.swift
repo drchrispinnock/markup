@@ -34,6 +34,10 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
     /// likewise.
     var bibliographyOnDisk: Bibliography??
 
+    /// Moves a file or folder to the Trash (Delete in the sidebar's menu).
+    /// Tests delete it instead, so as not to fill the Trash.
+    var moveToTrash: (URL) throws -> Void = { try FileManager.default.trashItem(at: $0, resultingItemURL: nil) }
+
     /// Documents still to ask about while closing.
     private var documentsToReview: [MarkdownDocument] = []
 
@@ -87,6 +91,7 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
 
         sidebar.onChoose = { [unowned self] url in open(url) }
         sidebar.onFolderChange = { [weak self] in self?.filesChanged() }
+        sidebar.menuTarget = self
         updateTitle()
 
         NotificationCenter.default.addObserver(self, selector: #selector(documentEditedChanged(_:)),
@@ -150,6 +155,21 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
         }
         window?.makeFirstResponder(document.editor.textView)
         sidebar.select(document.fileURL)
+        updateTitle()
+    }
+
+    /// Closes `document`, whose file has gone, without asking about unsaved
+    /// changes, and stops showing it.
+    func forget(_ document: MarkdownDocument) {
+        if currentDocument === document {
+            document.editorIfLoaded?.removeFromParent()
+            document.editorIfLoaded?.view.removeFromSuperview()
+            currentDocument = nil
+            placeholder.isHidden = false
+        }
+        documents.removeAll { $0 === document }
+        document.project = nil
+        if document.windowControllers.isEmpty { document.close() }
         updateTitle()
     }
 
