@@ -114,10 +114,11 @@ final class Settings {
 
     /// The folders an image's path is looked up in, in order: the images
     /// directory, then the document's own folder, then its `resources` and
-    /// `images` subfolders.
+    /// `images` subfolders, then its parent (`..`), as a Jekyll post in
+    /// `_posts` has the site's root.
     func imageFolders(forDocumentAt documentURL: URL?) -> [URL] {
         let folder = documentURL?.deletingLastPathComponent()
         return [imagesDirectory, folder, folder?.appendingPathComponent("resources", isDirectory: true),
-                folder?.appendingPathComponent("images", isDirectory: true)].compactMap { $0 }
+                folder?.appendingPathComponent("images", isDirectory: true), folder?.deletingLastPathComponent()].compactMap { $0 }
     }
 }

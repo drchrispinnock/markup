@@ -22,15 +22,19 @@ extension MarkdownImage {
         return NSAttributedString(string: "\u{FFFC}", attributes: attributes)
     }
 
-    /// The image's file: the path looked up in each folder in turn. Nil for
-    /// web addresses and for files that can't be found.
+    /// The image's file: the path looked up in each folder in turn. A path
+    /// starting with "/", such as Jekyll's "/assets/a.png" from the website's
+    /// root, is looked up without it, and failing that is the file at that
+    /// full path, as Insert Image writes for one in none of the folders. Nil
+    /// for web addresses, "//" ones included, and for files that can't be
+    /// found.
     func fileURL(in folders: [URL]) -> URL? {
-        guard !path.isEmpty, !path.contains("://") else { return nil }
+        guard !path.isEmpty, !path.contains("://"), !path.hasPrefix("//") else { return nil }
         // Markdown paths are URLs, so spaces may be written as %20.
         let paths = [path, path.removingPercentEncoding].compactMap { $0 }
-        let candidates = paths.contains { $0.hasPrefix("/") }
-            ? paths.map { URL(fileURLWithPath: $0) }
-            : folders.flatMap { folder in paths.map { folder.appendingPathComponent($0) } }
+        let relative = paths.map { $0.hasPrefix("/") ? String($0.dropFirst()) : $0 }
+        let candidates = folders.flatMap { folder in relative.map { folder.appendingPathComponent($0) } }
+            + paths.filter { $0.hasPrefix("/") }.map { URL(fileURLWithPath: $0) }
         return candidates.first { url in
             var isDirectory: ObjCBool = false
             return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && !isDirectory.boolValue

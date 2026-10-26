@@ -1064,12 +1064,12 @@ import Testing
         #expect(editor.markdown == markdown)
     }
 
-    @Test func looksInTheImagesDirectoryThenTheDocumentsFolderThenResourcesThenImages() throws {
+    @Test func looksInTheImagesDirectoryThenTheDocumentsFolderThenResourcesThenImagesThenAbove() throws {
         defer { cleanUp() }
-        let documentFolder = imagesDirectory.appendingPathComponent("doc")
+        let documentFolder = imagesDirectory.appendingPathComponent("site/doc")
         document.fileURL = documentFolder.appendingPathComponent("post.md")
         let folders = [imagesDirectory, documentFolder, documentFolder.appendingPathComponent("resources"),
-                       documentFolder.appendingPathComponent("images")]
+                       documentFolder.appendingPathComponent("images"), imagesDirectory.appendingPathComponent("site")]
         #expect(editor.imageFolders.map(\.path) == folders.map(\.path))
         for folder in folders.dropFirst() {
             try FileManager.default.createDirectory(at: folder.appendingPathComponent("cats"), withIntermediateDirectories: true)
@@ -1085,6 +1085,21 @@ import Testing
         try Self.writePNG(width: 10, height: 10, to: imagesDirectory.appendingPathComponent("cats/tom.png"))
         #expect(MarkdownImage(alt: "", path: "cats%2Ftom.png").fileURL(in: editor.imageFolders) != nil)
         #expect(MarkdownImage(alt: "", path: "https://example.com/a.png").fileURL(in: editor.imageFolders) == nil)
+        #expect(MarkdownImage(alt: "", path: "//example.com/cats/tom.png").fileURL(in: editor.imageFolders) == nil)
+    }
+
+    @Test func aLeadingSlashIsDroppedToLookThePathUp() throws {
+        defer { cleanUp() }
+        let found = MarkdownImage(alt: "", path: "/cats/tom.png").fileURL(in: editor.imageFolders)
+        #expect(found?.path == imagesDirectory.appendingPathComponent("cats/tom.png").path)
+        // A full path in none of the folders, as Insert Image writes, is
+        // still found.
+        let full = imagesDirectory.appendingPathComponent("cats/tom.png").path
+        #expect(MarkdownImage(alt: "", path: full).fileURL(in: [])?.path == full)
+        // The text keeps its slash.
+        editor.load(markdown: "![](/cats/tom.png)")
+        #expect(cell(at: 0)?.picture != nil)
+        #expect(editor.markdown == "![](/cats/tom.png)")
     }
 
     @Test func imagesShowAtTheirActualSize() throws {
@@ -2392,7 +2407,7 @@ import Testing
         document.makeWindowControllers()
         editor = document.editor
         editor.settings = Settings(defaults: UserDefaults(suiteName: suiteName)!)
-        editor.settings.imagesDirectory = site
+        document.fileURL = site.appendingPathComponent("_posts/2026-10-09-staceys.md")
     }
 
     private func cleanUp() {
@@ -2439,9 +2454,9 @@ import Testing
         #expect(editor.markdown == "<p>\nText <p class=\"x\">here</p>\n</p>")
     }
 
-    @Test func anImageShowsAsAnImage() throws {
+    @Test func anImageShowsFromTheSitesRoot() throws {
         defer { cleanUp() }
-        let html = #"<img src="assets/pie.png" style="float:right; margin:20px;" alt="Pie">"#
+        let html = #"<img src="/assets/pie.png" style="float:right; margin:20px;" alt="Pie">"#
         editor.load(markdown: "Before " + html + " after")
         let attachment = try #require(textView.textStorage!.attribute(.attachment, at: 7, effectiveRange: nil) as? NSTextAttachment)
         #expect((attachment.attachmentCell as? ImageAttachmentCell)?.picture != nil)

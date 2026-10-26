@@ -54,7 +54,7 @@ final class SettingsWindowController: NSWindowController {
         clearButton.action = #selector(clearImagesDirectory(_:))
         let note = NSTextField(wrappingLabelWithString:
             "Markup looks for a document's images in this folder, then in the document's own folder, "
-                + "then in its resources and images folders.")
+                + "then in its resources and images folders, then in the folder above it.")
         note.textColor = .secondaryLabelColor
         note.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
 

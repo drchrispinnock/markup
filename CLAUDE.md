@@ -83,7 +83,7 @@ Markup > Settings (`SettingsWindowController`, opened by `AppDelegate.showSettin
 - **Heading IDs:** `addsHeadingIDs` (key `MarkupAddsHeadingIDs`, on by default), `headingIDForm` (`MarkupHeadingIDForm`, default `idLine`) and `headingIDScheme` (`MarkupHeadingIDScheme`, default `fileLevelWord`). They apply to new IDs only, including those cross links add. `crossFileLinks` (`MarkupCrossFileLinks`): `idOnly` (`#id`, as Leanpub needs; the default), `withPath` (`other.md#id`) or `off` (only the same file's headings).
 - **Quick variables:** `quickVariables` (`MarkupQuickTags`, its key from when variables were tags; off by default): typing `@name@` inserts the variable.
 - **Bibliography:** `hangingBibliography` (`MarkupHangingBibliography`, on by default) writes bibliographies inside Leanpub's hanging paragraphs.
-- **Images directory** (`imagesDirectory`, key `MarkupImagesDirectory`, a folder path or unset). Image paths are looked up in this folder first, then the document's own folder, then its `resources` and `images` subfolders (`Settings.imageFolders(forDocumentAt:)`).
+- **Images directory** (`imagesDirectory`, key `MarkupImagesDirectory`, a folder path or unset). Image paths are looked up in this folder first, then the document's own folder, then its `resources` and `images` subfolders, then its parent, `..` (`Settings.imageFolders(forDocumentAt:)`). A path starting with `/` (a website's root, as in Jekyll's `/assets/a.png`) is looked up without it, and failing that is the file at that full path, as Insert Image writes for an image in none of the folders; the text keeps its `/` (`MarkdownImage.fileURL(in:)`). A `//` path is a web address.
 
 ### Updates
 
