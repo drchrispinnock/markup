@@ -2507,6 +2507,52 @@ import Testing
         #expect(editor.markdown == "One<br>t")
     }
 
+    private func font(at location: Int) -> NSFont {
+        textView.textStorage!.attribute(.font, at: location, effectiveRange: nil) as! NSFont
+    }
+
+    @Test func formattingTagsFormatTheTextBetweenThem() {
+        defer { cleanUp() }
+        let markdown = "<h4>Title</h4>\nSome <strong>bold</strong>, <em>italic</em> and <b><i>both</i></b>."
+        editor.load(markdown: markdown)
+        #expect(textView.string == "\u{FFFC}Title\u{FFFC}\nSome \u{FFFC}bold\u{FFFC}, \u{FFFC}italic\u{FFFC} and \u{FFFC}\u{FFFC}both\u{FFFC}\u{FFFC}.")
+        #expect(font(at: 1).pointSize == BlockStyle.heading4.font.pointSize)
+        #expect(font(at: 1).fontDescriptor.symbolicTraits.contains(.bold))
+        #expect(textView.textStorage!.blockStyle(at: 1) == .paragraph)
+        // The second line starts at 8: "Some " then the tag at 13.
+        #expect(font(at: 14).fontDescriptor.symbolicTraits.contains(.bold))
+        #expect(!font(at: 9).fontDescriptor.symbolicTraits.contains(.bold))
+        #expect(font(at: 23).fontDescriptor.symbolicTraits.contains(.italic))
+        let both = font(at: 37).fontDescriptor.symbolicTraits
+        #expect(both.contains(.bold) && both.contains(.italic))
+        // Saved exactly as written, with no Markdown added.
+        #expect(editor.markdown == markdown)
+        #expect(editor.plainText(for: NSRange(location: 13, length: 6)) == "<strong>bold</strong>")
+    }
+
+    @Test func editsKeepTheFormatsFollowingTheTags() {
+        defer { cleanUp() }
+        editor.load(markdown: "A <strong>b</strong> c")
+        // Typed inside, the text is bold too.
+        textView.setSelectedRange(NSRange(location: 4, length: 0))
+        type("ig")
+        #expect(font(at: 5).fontDescriptor.symbolicTraits.contains(.bold))
+        #expect(editor.markdown == "A <strong>big</strong> c")
+        // Without its closing tag, it isn't; undo brings both back.
+        textView.setSelectedRange(NSRange(location: 7, length: 0))
+        step { textView.deleteBackward(nil) }
+        #expect(!font(at: 3).fontDescriptor.symbolicTraits.contains(.bold))
+        document.undoManager?.undo()
+        #expect(font(at: 3).fontDescriptor.symbolicTraits.contains(.bold))
+        #expect(editor.markdown == "A <strong>big</strong> c")
+        // Typed tags format what they enclose.
+        editor.load(markdown: "")
+        type("x <em>y</em>")
+        #expect(textView.string == "x \u{FFFC}y\u{FFFC}")
+        #expect(font(at: 3).fontDescriptor.symbolicTraits.contains(.italic))
+        #expect(editor.markdown == "x <em>y</em>")
+    }
+
     @Test func otherHTMLStaysText() {
         defer { cleanUp() }
         editor.load(markdown: "<span>x</span> \\<br> <div>")

@@ -75,6 +75,13 @@ extension EditorViewController {
                 text.append(inlineText(line.text + terminator, attributes: attributes, imageFolders: imageFolders))
             }
         }
+        // Text between HTML formatting tags takes their format, line by line.
+        let string = text.string as NSString
+        var formatted = Set<Int>()
+        text.enumerateAttribute(.markdownHTML, in: NSRange(location: 0, length: text.length)) { value, run, _ in
+            let line = string.paragraphRange(for: run)
+            if value != nil, formatted.insert(line.location).inserted { text.applyHTMLFormats(in: line) }
+        }
         return text
     }
 

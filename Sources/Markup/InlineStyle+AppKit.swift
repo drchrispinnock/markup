@@ -20,9 +20,9 @@ extension NSAttributedString.Key {
     /// (`[text](destination)`).
     static let markdownLink = NSAttributedString.Key("MarkupLink")
 
-    /// Everything that formats text within a line: the inline styles and
-    /// links. Code blocks have none of it.
-    static let inlineFormatting = InlineStyle.allCases.map(\.key) + [.markdownLink]
+    /// Everything that formats text within a line: the inline styles, links
+    /// and HTML formatting. Code blocks have none of it.
+    static let inlineFormatting = InlineStyle.allCases.map(\.key) + [.markdownLink, .htmlFormat]
 }
 
 extension InlineStyle {
@@ -143,8 +143,16 @@ extension NSMutableAttributedString {
     /// Needed wherever a line's style is set, since that sets the plain font.
     func applyInlineStyles(in range: NSRange) {
         enumerateAttributes(in: range) { attributes, run, _ in
-            let style = (attributes[.blockStyle] as? Int).flatMap(BlockStyle.init) ?? .paragraph
-            let styles = Set(InlineStyle.allCases.filter { attributes[$0.key] != nil })
+            var style = (attributes[.blockStyle] as? Int).flatMap(BlockStyle.init) ?? .paragraph
+            var styles = Set(InlineStyle.allCases.filter { attributes[$0.key] != nil })
+            // Text inside HTML formatting tags looks as their Markdown would.
+            let formats = attributes[.htmlFormat] as? Set<HTMLFormat> ?? []
+            if formats.contains(.bold) { styles.insert(.bold) }
+            if formats.contains(.italic) { styles.insert(.italic) }
+            if let level = formats.compactMap({ if case .heading(let level) = $0 { level } else { nil } }).min(),
+               let heading = BlockStyle(rawValue: level) {
+                style = heading
+            }
             let font = style.font(for: styles.union(attributes[.tableHeader] != nil ? [.bold] : []))
             if attributes[.font] as? NSFont != font {
                 addAttribute(.font, value: font, range: run)

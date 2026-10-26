@@ -535,6 +535,12 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
                     }
                 }
             }
+            // Text between HTML formatting tags takes their format, which
+            // edits to the tags, or to the text, change.
+            for line in lineRanges(in: editedRange) where line.length > 0 && storage.blockStyle(at: line.location) != .code
+                && (contains(.markdownHTML, in: line) || contains(.htmlFormat, in: line)) && !storage.hasHTMLFormats(in: line) {
+                changeAttributes(in: line) { storage.applyHTMLFormats(in: line) }
+            }
             updateTables(in: editedRange)
             keepHeadingAnchorsSingle(around: editedRange)
         }
