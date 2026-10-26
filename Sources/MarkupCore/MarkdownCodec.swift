@@ -67,7 +67,7 @@ public struct CodeFence: Hashable, Sendable {
 /// Converts between Markdown and lines. `markdown(from: lines(fromMarkdown: m))`
 /// returns `m` unchanged for any `m` that uses "\n" line endings.
 ///
-/// - A line starting with one to three `#` followed by a space (or nothing)
+/// - A line starting with one to six `#` followed by a space (or nothing)
 ///   is a heading.
 /// - A line starting with "- ", or a number of one to nine digits and "." or
 ///   ")" and a space, is a list item: a bullet or a numbered item. "[ ] " or
@@ -330,11 +330,11 @@ public enum MarkdownCodec {
         return (ListItem(level: prefix.indent / 2, marker: prefix.marker, number: prefix.number), prefix.length)
     }
 
-    /// The heading that `text` starts with, as typed: one to three `#` and a
+    /// The heading that `text` starts with, as typed: one to six `#` and a
     /// space. Returns the style and the length of the prefix, which is ASCII.
     public static func headingPrefix(of text: some StringProtocol) -> (style: BlockStyle, length: Int)? {
         let level = text.prefix(while: { $0 == "#" }).count
-        guard (1...3).contains(level), text.dropFirst(level).first == " ",
+        guard (1...6).contains(level), text.dropFirst(level).first == " ",
               let style = BlockStyle(rawValue: level) else { return nil }
         return (style, level + 1)
     }
@@ -467,11 +467,11 @@ public enum MarkdownCodec {
         return text.isEmpty ? marker : marker + " " + text
     }
 
-    /// The level of a heading marker at the start of `text`: one to three `#`
+    /// The level of a heading marker at the start of `text`: one to six `#`
     /// followed by a space or the end of the line.
     private static func headingLevel(of text: Substring) -> Int? {
         let level = text.prefix(while: { $0 == "#" }).count
-        guard (1...3).contains(level) else { return nil }
+        guard (1...6).contains(level) else { return nil }
         let rest = text.dropFirst(level)
         return rest.isEmpty || rest.first == " " ? level : nil
     }

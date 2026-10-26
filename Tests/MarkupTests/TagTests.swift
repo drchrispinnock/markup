@@ -88,7 +88,7 @@ import Testing
             .attachmentCell as? TagAttachmentCell)
         let frame = cell.cellFrame(for: textView.textContainer!, proposedLineFragment: .zero, glyphPosition: .zero,
                                    characterIndex: 0)
-        let width = NSAttributedString(string: "Signet", attributes: [.font: BlockStyle.heading.font(for: [])]).size().width
+        let width = NSAttributedString(string: "Signet", attributes: [.font: BlockStyle.heading1.font(for: [])]).size().width
         #expect(abs(frame.width - (ceil(width) + 6)) < 1)
     }
 

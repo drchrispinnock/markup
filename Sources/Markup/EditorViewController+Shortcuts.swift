@@ -4,7 +4,7 @@ import MarkupCore
 extension EditorViewController {
     /// Turns Markdown syntax typed (or pasted) in the edited lines into what
     /// it stands for:
-    /// - "# ", "## " and "### " make the line a heading of that level.
+    /// - "# " to "###### " make the line a heading of that level.
     /// - "> " at the start of a paragraph makes it a quote line.
     /// - "- " makes a paragraph a bullet, and "[ ] " or "[x] " at the start of
     ///   a bullet makes it a checkbox.
@@ -83,7 +83,7 @@ extension EditorViewController {
         convertTables(after: edit)
     }
 
-    /// Removes a typed "# ", "## " or "### " and gives the line that heading
+    /// Removes a typed "# " to "###### " and gives the line that heading
     /// style. Returns false if the line doesn't start with one.
     private func convertHeadingPrefix(of line: NSRange, after edit: NSRange) -> Bool {
         guard line.length > 0 else { return false }

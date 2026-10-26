@@ -59,14 +59,14 @@ import Testing
     @Test func loadingHidesMarkersAndSizesHeadings() {
         editor.load(markdown: "# Title\n## Section\nBody")
         #expect(textView.string == "Title\nSection\nBody")
-        #expect(fontSize(at: 0) == BlockStyle.heading.font.pointSize)
-        #expect(fontSize(at: 6) == BlockStyle.subheading.font.pointSize)
+        #expect(fontSize(at: 0) == BlockStyle.heading1.font.pointSize)
+        #expect(fontSize(at: 6) == BlockStyle.heading2.font.pointSize)
         #expect(fontSize(at: 14) == BlockStyle.paragraph.font.pointSize)
         #expect(editor.markdown == "# Title\n## Section\nBody")
     }
 
     @Test func typingAHeadingThenReturnGoesBackToParagraph() {
-        choose(.heading)
+        choose(.heading1)
         type("Title")
         press(#selector(NSResponder.insertNewline(_:)))
         #expect(selectedStyle == .paragraph)
@@ -93,14 +93,14 @@ import Testing
     @Test func choosingAStyleRestylesEverySelectedLine() {
         editor.load(markdown: "One\nTwo\nThree")
         select(1, 5)
-        choose(.subheading)
+        choose(.heading2)
         #expect(editor.markdown == "## One\n## Two\nThree")
     }
 
     @Test func popupFollowsTheCaret() {
         editor.load(markdown: "# Title\nBody")
         select(2)
-        #expect(selectedStyle == .heading)
+        #expect(selectedStyle == .heading1)
         select(8)
         #expect(selectedStyle == .paragraph)
     }
@@ -117,7 +117,7 @@ import Testing
         select(2)
         press(#selector(NSResponder.deleteBackward(_:)))
         #expect(editor.markdown == "# AB")
-        #expect(fontSize(at: 1) == BlockStyle.heading.font.pointSize)
+        #expect(fontSize(at: 1) == BlockStyle.heading1.font.pointSize)
 
         document.undoManager?.undo()
         #expect(editor.markdown == "# A\nB")
@@ -129,7 +129,7 @@ import Testing
 
     @Test func styleChangeUndoesAndRedoes() {
         editor.load(markdown: "Title")
-        choose(.heading)
+        choose(.heading1)
         #expect(editor.markdown == "# Title")
         #expect(document.isDocumentEdited)
         document.undoManager?.undo()
@@ -335,7 +335,7 @@ import Testing
         editor.load(markdown: "- Title\n- b")
         select(3)
         step {
-            editor.stylePopUp.selectItem(withTag: BlockStyle.heading.rawValue)
+            editor.stylePopUp.selectItem(withTag: BlockStyle.heading1.rawValue)
             editor.stylePopUp.sendAction(editor.stylePopUp.action, to: editor.stylePopUp.target)
         }
         #expect(editor.markdown == "# Title\n- b")
@@ -543,7 +543,8 @@ import Testing
         BlockStyle(rawValue: editor.stylePopUp.selectedTag())
     }
 
-    @Test(arguments: [("# ", BlockStyle.heading), ("## ", .subheading), ("### ", .subsubheading)])
+    @Test(arguments: [("# ", BlockStyle.heading1), ("## ", .heading2), ("### ", .heading3), ("#### ", .heading4),
+                      ("##### ", .heading5), ("###### ", .heading6)])
     func markerAndSpaceMakeAHeading(marker: String, style: BlockStyle) {
         type(marker)
         #expect(textView.string == "")
@@ -552,6 +553,14 @@ import Testing
         #expect(textView.string == "Title")
         #expect(fontSize(at: 0) == style.font.pointSize)
         #expect(editor.markdown == marker + "Title")
+    }
+
+    @Test func thePopupOffersHeadingsOneToThreeAndShowsFourToSix() {
+        let titles = editor.stylePopUp.itemArray.filter { !$0.isHidden }.map(\.title)
+        #expect(titles.prefix(4) == ["Heading 1", "Heading 2", "Heading 3", "Paragraph"])
+        editor.load(markdown: "##### Five")
+        #expect(selectedStyle == .heading5)
+        #expect(editor.stylePopUp.titleOfSelectedItem == "Heading 5")
     }
 
     @Test func returnAfterATypedHeadingGoesBackToParagraph() {
@@ -563,7 +572,7 @@ import Testing
         #expect(editor.markdown == "Intro\n# Title\nBody")
     }
 
-    @Test(arguments: ["#Title", "#### Four", "a # b", " # Indented"])
+    @Test(arguments: ["#Title", "####### Seven", "a # b", " # Indented"])
     func otherHashesStayText(text: String) {
         type(text)
         #expect(textView.string == text)
@@ -606,7 +615,7 @@ import Testing
         type("Intro")
         press(#selector(NSResponder.insertNewline(_:)))
         type("# ")
-        #expect(selectedStyle == .heading)
+        #expect(selectedStyle == .heading1)
         textView.setSelectedRange(NSRange(location: 2, length: 0))
         #expect(selectedStyle == .paragraph)
         textView.setSelectedRange(NSRange(location: 6, length: 0))
@@ -895,7 +904,7 @@ import Testing
     @Test func printsTheFormattedText() throws {
         let text = try printedText()
         #expect(text.string == "Title\n\nSome text.\n\n\u{FFFC}one\n\u{FFFC}done\n")
-        #expect(text.blockStyle(at: 0) == .heading)
+        #expect(text.blockStyle(at: 0) == .heading1)
         #expect(text.attribute(.listMarker, at: 19, effectiveRange: nil) as? Int == ListMarker.bullet.rawValue)
     }
 
@@ -1057,7 +1066,7 @@ import Testing
         editor.load(markdown: markdown)
         #expect(storage.string == "A \u{FFFC} title\n\n\u{FFFC}\u{FFFC} item\nMissing \u{FFFC}.")
         #expect(cell(at: 2)?.picture != nil)
-        #expect(storage.blockStyle(at: 2) == .heading)
+        #expect(storage.blockStyle(at: 2) == .heading1)
         #expect(cell(at: 12)?.picture != nil)
         #expect(cell(at: 27)?.picture == nil)
         #expect(cell(at: 27)?.path == "nope.png")
@@ -1267,7 +1276,7 @@ import Testing
         #expect(storage.isItalic(at: 4) && !storage.isBold(at: 4) && traits(at: 4).contains(.italic))
         #expect(storage.isBold(at: 6) && storage.isItalic(at: 6) && traits(at: 6).isSuperset(of: [.bold, .italic]))
         #expect(!storage.isBold(at: 3) && !traits(at: 3).contains(.bold))
-        #expect(storage.isBold(at: 10) && storage.blockStyle(at: 10) == .heading)
+        #expect(storage.isBold(at: 10) && storage.blockStyle(at: 10) == .heading1)
         #expect(storage.isItalic(at: 13) && traits(at: 13).contains(.italic))
         #expect(editor.markdown == markdown)
     }
@@ -1365,11 +1374,11 @@ import Testing
     @Test func styleChangesKeepEmphasis() {
         editor.load(markdown: "a **b** *c*")
         select(0)
-        editor.stylePopUp.selectItem(withTag: BlockStyle.heading.rawValue)
+        editor.stylePopUp.selectItem(withTag: BlockStyle.heading1.rawValue)
         step { editor.styleChosen(editor.stylePopUp) }
         #expect(editor.markdown == "# a **b** *c*")
         #expect(traits(at: 2).contains(.bold) && traits(at: 4).contains(.italic))
-        #expect((storage.attribute(.font, at: 4, effectiveRange: nil) as! NSFont).pointSize == BlockStyle.heading.font.pointSize)
+        #expect((storage.attribute(.font, at: 4, effectiveRange: nil) as! NSFont).pointSize == BlockStyle.heading1.font.pointSize)
     }
 
     @Test func joiningLinesKeepsEmphasis() {
@@ -1378,7 +1387,7 @@ import Testing
         step { textView.deleteForward(nil) }
         #expect(editor.markdown == "# Head*it*")
         #expect(traits(at: 4).contains(.italic))
-        #expect((storage.attribute(.font, at: 4, effectiveRange: nil) as! NSFont).pointSize == BlockStyle.heading.font.pointSize)
+        #expect((storage.attribute(.font, at: 4, effectiveRange: nil) as! NSFont).pointSize == BlockStyle.heading1.font.pointSize)
     }
 
     @Test func copiesEmphasisAsMarkdown() {

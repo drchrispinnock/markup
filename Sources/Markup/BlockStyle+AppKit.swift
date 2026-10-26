@@ -19,9 +19,12 @@ extension NSAttributedString.Key {
 extension BlockStyle {
     var font: NSFont {
         switch self {
-        case .heading: .systemFont(ofSize: 28, weight: .bold)
-        case .subheading: .systemFont(ofSize: 22, weight: .bold)
-        case .subsubheading: .systemFont(ofSize: 18, weight: .semibold)
+        case .heading1: .systemFont(ofSize: 28, weight: .bold)
+        case .heading2: .systemFont(ofSize: 22, weight: .bold)
+        case .heading3: .systemFont(ofSize: 18, weight: .semibold)
+        case .heading4: .systemFont(ofSize: 16, weight: .semibold)
+        case .heading5: .systemFont(ofSize: 15, weight: .semibold)
+        case .heading6: .systemFont(ofSize: 14, weight: .semibold)
         case .paragraph: .systemFont(ofSize: 15)
         case .code, .frontMatter: .monospacedSystemFont(ofSize: 13.5, weight: .regular)
         case .table: .systemFont(ofSize: 15)

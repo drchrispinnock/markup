@@ -2,9 +2,14 @@
 /// for a paragraph, -1 for code, -2 for a table row, -3 for a quote and -4
 /// for front matter.
 public enum BlockStyle: Int, CaseIterable, Sendable {
-    case heading = 1
-    case subheading = 2
-    case subsubheading = 3
+    case heading1 = 1
+    case heading2 = 2
+    case heading3 = 3
+    /// Headings 4 to 6, which only "####" to "######" typed make: the style
+    /// popup offers 1 to 3.
+    case heading4 = 4
+    case heading5 = 5
+    case heading6 = 6
     case paragraph = 0
     /// A line of a fenced code block, kept exactly as typed.
     case code = -1
@@ -21,9 +26,12 @@ public enum BlockStyle: Int, CaseIterable, Sendable {
 
     public var title: String {
         switch self {
-        case .heading: "Heading"
-        case .subheading: "Subheading"
-        case .subsubheading: "Subsubheading"
+        case .heading1: "Heading 1"
+        case .heading2: "Heading 2"
+        case .heading3: "Heading 3"
+        case .heading4: "Heading 4"
+        case .heading5: "Heading 5"
+        case .heading6: "Heading 6"
         case .paragraph: "Paragraph"
         case .code: "Code"
         case .quote: "Quote"

@@ -108,12 +108,15 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         headerView.blendingMode = .withinWindow
 
         // A table row shows as Table, which can't be chosen: tables are
-        // made with the table button. Front matter is never shown.
+        // made with the table button. Headings 4 to 6 show on their lines
+        // but aren't offered: typing "####" makes them. Front matter is
+        // never shown.
         stylePopUp.autoenablesItems = false
         for style in BlockStyle.allCases where style != .frontMatter {
             stylePopUp.addItem(withTitle: style.title)
             stylePopUp.lastItem?.tag = style.rawValue
             stylePopUp.lastItem?.isEnabled = style != .table
+            stylePopUp.lastItem?.isHidden = style.rawValue > 3
         }
         stylePopUp.target = self
         stylePopUp.action = #selector(styleChosen(_:))

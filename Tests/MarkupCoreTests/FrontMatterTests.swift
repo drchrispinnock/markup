@@ -8,7 +8,7 @@ import Testing
         let lines = MarkdownCodec.lines(fromMarkdown: Self.jekyll)
         #expect(lines.prefix(5).allSatisfy { $0.style == .frontMatter })
         #expect(lines.prefix(5).map(\.text) == ["---", "layout: post", "# a YAML comment", "title: Stacey's", "---"])
-        #expect(Array(lines.dropFirst(5)) == [Line(style: .paragraph, text: ""), Line(style: .heading, text: "Heading"),
+        #expect(Array(lines.dropFirst(5)) == [Line(style: .paragraph, text: ""), Line(style: .heading1, text: "Heading"),
                                               Line(style: .paragraph, text: "Text")])
     }
 

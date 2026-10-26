@@ -5,25 +5,25 @@ import Testing
     @Test func parsesHeadingLevels() {
         let lines = MarkdownCodec.lines(fromMarkdown: "# One\n## Two\n### Three\nBody")
         #expect(lines == [
-            Line(style: .heading, text: "One"),
-            Line(style: .subheading, text: "Two"),
-            Line(style: .subsubheading, text: "Three"),
+            Line(style: .heading1, text: "One"),
+            Line(style: .heading2, text: "Two"),
+            Line(style: .heading3, text: "Three"),
             Line(style: .paragraph, text: "Body"),
         ])
     }
 
-    @Test(arguments: ["#hashtag", "#### Four", "  # Indented", "text # not at start"])
+    @Test(arguments: ["#hashtag", "####### Seven", "  # Indented", "text # not at start"])
     func leavesNonHeadingsAsParagraphs(markdown: String) {
         #expect(MarkdownCodec.lines(fromMarkdown: markdown) == [Line(style: .paragraph, text: markdown)])
     }
 
     @Test func keepsExtraSpacesInHeadingText() {
-        #expect(MarkdownCodec.lines(fromMarkdown: "#  Title") == [Line(style: .heading, text: " Title")])
+        #expect(MarkdownCodec.lines(fromMarkdown: "#  Title") == [Line(style: .heading1, text: " Title")])
     }
 
     @Test func emptyHeadingIsJustTheMarker() {
-        #expect(MarkdownCodec.lines(fromMarkdown: "##") == [Line(style: .subheading, text: "")])
-        #expect(MarkdownCodec.markdown(from: [Line(style: .subheading, text: "")]) == "##")
+        #expect(MarkdownCodec.lines(fromMarkdown: "##") == [Line(style: .heading2, text: "")])
+        #expect(MarkdownCodec.markdown(from: [Line(style: .heading2, text: "")]) == "##")
     }
 
     @Test func escapesParagraphsThatLookLikeHeadings() {
@@ -32,7 +32,7 @@ import Testing
     }
 
     @Test func serializesHeadings() {
-        let lines = [Line(style: .heading, text: "Title"), Line(style: .paragraph, text: "Body")]
+        let lines = [Line(style: .heading1, text: "Title"), Line(style: .paragraph, text: "Body")]
         #expect(MarkdownCodec.markdown(from: lines) == "# Title\nBody")
     }
 
@@ -141,12 +141,23 @@ import Testing
         #expect(MarkdownCodec.lines(fromMarkdown: "- \\[ ] not a task") == [item("[ ] not a task")])
     }
 
+    @Test func readsAndWritesHeadingsFourToSix() {
+        let markdown = "#### Four\n##### Five\n###### Six\n####### Seven\n\\#### Escaped"
+        let lines = MarkdownCodec.lines(fromMarkdown: markdown)
+        #expect(lines.map(\.style) == [.heading4, .heading5, .heading6, .paragraph, .paragraph])
+        #expect(lines[4].text == "#### Escaped")
+        #expect(MarkdownCodec.markdown(from: lines) == markdown)
+        #expect(MarkdownCodec.markdown(from: [Line(style: .paragraph, text: "###### x")]) == "\\###### x")
+    }
+
     @Test func headingPrefix() {
-        #expect(MarkdownCodec.headingPrefix(of: "# Title")! == (BlockStyle.heading, 2))
-        #expect(MarkdownCodec.headingPrefix(of: "### ")! == (BlockStyle.subsubheading, 4))
+        #expect(MarkdownCodec.headingPrefix(of: "# Title")! == (BlockStyle.heading1, 2))
+        #expect(MarkdownCodec.headingPrefix(of: "### ")! == (BlockStyle.heading3, 4))
         #expect(MarkdownCodec.headingPrefix(of: "#") == nil)
         #expect(MarkdownCodec.headingPrefix(of: "#Title") == nil)
-        #expect(MarkdownCodec.headingPrefix(of: "#### Four") == nil)
+        #expect(MarkdownCodec.headingPrefix(of: "#### Four")! == (BlockStyle.heading4, 5))
+        #expect(MarkdownCodec.headingPrefix(of: "###### Six")! == (BlockStyle.heading6, 7))
+        #expect(MarkdownCodec.headingPrefix(of: "####### Seven") == nil)
         #expect(MarkdownCodec.headingPrefix(of: " # Indented") == nil)
     }
 

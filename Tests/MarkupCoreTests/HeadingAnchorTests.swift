@@ -4,28 +4,28 @@ import Testing
 @Suite struct HeadingAnchorTests {
     @Test func readsTheIDOnTheLineAbove() {
         #expect(MarkdownCodec.lines(fromMarkdown: "{#id: delegating}\n# Delegating and Staking\nText") == [
-            Line(style: .heading, text: "Delegating and Staking",
+            Line(style: .heading1, text: "Delegating and Staking",
                  anchor: HeadingAnchor(id: "delegating", form: .idLine, written: "{#id: delegating}")),
             Line(style: .paragraph, text: "Text"),
         ])
         #expect(MarkdownCodec.lines(fromMarkdown: "{#setup}\n## Setting up")[0].anchor
             == HeadingAnchor(id: "setup", form: .braceLine, written: "{#setup}"))
         #expect(MarkdownCodec.lines(fromMarkdown: "{#id:tight}\n#")[0]
-            == Line(style: .heading, text: "", anchor: HeadingAnchor(id: "tight", form: .idLine, written: "{#id:tight}")))
+            == Line(style: .heading1, text: "", anchor: HeadingAnchor(id: "tight", form: .idLine, written: "{#id:tight}")))
     }
 
     @Test func readsTheIDAtTheEndOfTheHeading() {
         #expect(MarkdownCodec.lines(fromMarkdown: "### Setting up {#setup}") == [
-            Line(style: .subsubheading, text: "Setting up", anchor: HeadingAnchor(id: "setup", form: .attribute, written: "{#setup}")),
+            Line(style: .heading3, text: "Setting up", anchor: HeadingAnchor(id: "setup", form: .attribute, written: "{#setup}")),
         ])
         #expect(MarkdownCodec.lines(fromMarkdown: "## {#empty}")[0]
-            == Line(style: .subheading, text: "", anchor: HeadingAnchor(id: "empty", form: .attribute, written: "{#empty}")))
+            == Line(style: .heading2, text: "", anchor: HeadingAnchor(id: "empty", form: .attribute, written: "{#empty}")))
     }
 
     @Test func anIDAtTheEndLeavesTheLineAboveAsText() {
         #expect(MarkdownCodec.lines(fromMarkdown: "{#above}\n# Title {#end}") == [
             Line(style: .paragraph, text: "{#above}"),
-            Line(style: .heading, text: "Title", anchor: HeadingAnchor(id: "end", form: .attribute, written: "{#end}")),
+            Line(style: .heading1, text: "Title", anchor: HeadingAnchor(id: "end", form: .attribute, written: "{#end}")),
         ])
     }
 
@@ -46,7 +46,7 @@ import Testing
 
     @Test func writesEachForm() {
         let heading = { (form: HeadingAnchor.Form) in
-            MarkdownCodec.markdown(from: [Line(style: .subheading, text: "Setting up", anchor: HeadingAnchor(id: "setup", form: form))])
+            MarkdownCodec.markdown(from: [Line(style: .heading2, text: "Setting up", anchor: HeadingAnchor(id: "setup", form: form))])
         }
         #expect(heading(.idLine) == "{#id: setup}\n## Setting up")
         #expect(heading(.braceLine) == "{#setup}\n## Setting up")
@@ -65,7 +65,7 @@ import Testing
     }
 
     @Test func escapesTextThatWouldReadAsAnID() {
-        let lines = [Line(style: .paragraph, text: "{#x}"), Line(style: .heading, text: "Title {#y}")]
+        let lines = [Line(style: .paragraph, text: "{#x}"), Line(style: .heading1, text: "Title {#y}")]
         let markdown = MarkdownCodec.markdown(from: lines)
         #expect(markdown == "\\{#x}\n# Title \\{#y}")
         #expect(MarkdownCodec.lines(fromMarkdown: markdown) == lines)
