@@ -103,11 +103,12 @@ public struct MarkupTag: Hashable, Sendable {
     }
 
     /// `markdown` with every variable's and citation's value, and every
-    /// bibliography, set from `sources`, except in code blocks.
+    /// bibliography, set from `sources`, except in code blocks and front
+    /// matter.
     public static func updating(markdown: String, from sources: TagSources) -> String {
         var lines = MarkdownCodec.lines(fromMarkdown: markdown)
         var changed = false
-        for index in lines.indices where lines[index].style != .code {
+        for index in lines.indices where lines[index].style != .code && lines[index].style != .frontMatter {
             let text = lines[index].text
             let found = tags(in: text)
             guard !found.isEmpty else { continue }

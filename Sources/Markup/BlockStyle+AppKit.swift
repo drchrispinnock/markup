@@ -23,7 +23,7 @@ extension BlockStyle {
         case .subheading: .systemFont(ofSize: 22, weight: .bold)
         case .subsubheading: .systemFont(ofSize: 18, weight: .semibold)
         case .paragraph: .systemFont(ofSize: 15)
-        case .code: .monospacedSystemFont(ofSize: 13.5, weight: .regular)
+        case .code, .frontMatter: .monospacedSystemFont(ofSize: 13.5, weight: .regular)
         case .table: .systemFont(ofSize: 15)
         case .quote: .systemFont(ofSize: 15)
         }

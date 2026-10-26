@@ -43,6 +43,16 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     let textView = EditorTextView(usingTextLayoutManager: false)
     /// Stands in for the formatting controls when editing plain text.
     let plainTextLabel = NSTextField(labelWithString: "Plain Text")
+    /// Shows that the file has front matter, which the formatted view hides
+    /// (`+FrontMatter`).
+    let frontMatterBadge = BadgeButton(title: "Front Matter", target: nil, action: nil)
+
+    /// The front matter the formatted view hides, exactly as written, with
+    /// the newline after it if there is one. Nil when there is none, and
+    /// not used in the Markdown view, whose text holds it.
+    var frontMatter: String?
+    /// Keeps the formatting controls clear of the badge while it shows.
+    var frontMatterBadgeSpacing: NSLayoutConstraint!
 
     /// True when the text view shows the raw Markdown instead of the
     /// formatted text. Formatting, shortcuts and list commands are off then.
@@ -98,9 +108,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         headerView.blendingMode = .withinWindow
 
         // A table row shows as Table, which can't be chosen: tables are
-        // made with the table button.
+        // made with the table button. Front matter is never shown.
         stylePopUp.autoenablesItems = false
-        for style in BlockStyle.allCases {
+        for style in BlockStyle.allCases where style != .frontMatter {
             stylePopUp.addItem(withTitle: style.title)
             stylePopUp.lastItem?.tag = style.rawValue
             stylePopUp.lastItem?.isEnabled = style != .table
@@ -137,6 +147,12 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         imageButton.action = #selector(insertImage(_:))
         imageButton.toolTip = "Insert Image"
 
+        frontMatterBadge.image = NSImage(systemSymbolName: "doc.text", accessibilityDescription: nil)
+        frontMatterBadge.imagePosition = .imageLeading
+        frontMatterBadge.target = self
+        frontMatterBadge.action = #selector(showFrontMatter(_:))
+        frontMatterBadge.isHidden = true
+
         viewModeControl.segmentCount = 2
         viewModeControl.setLabel("Formatted", forSegment: 0)
         viewModeControl.setLabel("Markdown", forSegment: 1)
@@ -165,6 +181,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         plainTextLabel.translatesAutoresizingMaskIntoConstraints = false
         plainTextLabel.isHidden = !plainText
         headerView.addSubview(plainTextLabel)
+        frontMatterBadge.translatesAutoresizingMaskIntoConstraints = false
+        headerView.addSubview(frontMatterBadge)
 
         NSLayoutConstraint.activate([
             headerView.topAnchor.constraint(equalTo: contentView.topAnchor),
@@ -187,6 +205,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             subscriptButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
             superscriptButton.leadingAnchor.constraint(equalTo: subscriptButton.trailingAnchor, constant: 4),
             superscriptButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+
+            frontMatterBadge.trailingAnchor.constraint(equalTo: linkButton.leadingAnchor, constant: -12),
+            frontMatterBadge.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
 
             linkButton.trailingAnchor.constraint(equalTo: crossLinkButton.leadingAnchor, constant: -4),
             linkButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
@@ -224,6 +245,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         // window, is kept at least as wide as they are.
         superscriptButton.trailingAnchor.constraint(lessThanOrEqualTo: linkButton.leadingAnchor, constant: -16)
             .isActive = !plainText
+        frontMatterBadgeSpacing = superscriptButton.trailingAnchor.constraint(
+            lessThanOrEqualTo: frontMatterBadge.leadingAnchor, constant: -16)
 
         deletedHeadingBarHeight = deletedHeadingBar.heightAnchor.constraint(equalToConstant: 0)
         deletedHeadingBarHeight.isActive = true

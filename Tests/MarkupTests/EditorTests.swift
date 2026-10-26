@@ -2285,3 +2285,89 @@ import Testing
         #expect(!editor.validateMenuItem(item))
     }
 }
+
+/// Front matter: hidden in the formatted view, with a badge in the header.
+@MainActor
+@Suite struct FrontMatterEditorTests {
+    let document: MarkdownDocument
+    let editor: EditorViewController
+
+    static let markdown = "---\nlayout: post\ntitle: *Stacey's*\n---\n\n# Stacey's\nText"
+
+    init() {
+        _ = NSApplication.shared
+        document = MarkdownDocument()
+        document.undoManager?.groupsByEvent = false
+        document.makeWindowControllers()
+        editor = document.editor
+        editor.load(markdown: Self.markdown)
+    }
+
+    private var textView: NSTextView { editor.textView }
+
+    private func step(_ action: () -> Void) {
+        document.undoManager?.beginUndoGrouping()
+        action()
+        document.undoManager?.endUndoGrouping()
+    }
+
+    @Test func isHiddenAndSavedAsWritten() {
+        #expect(textView.string == "\nStacey's\nText")
+        #expect(editor.markdown == Self.markdown)
+        textView.setSelectedRange(NSRange(location: textView.string.utf16.count, length: 0))
+        step { textView.insertText(" more", replacementRange: textView.selectedRange()) }
+        #expect(editor.markdown == Self.markdown + " more")
+    }
+
+    @Test func theBadgeShowsInTheFormattedViewOnly() {
+        #expect(!editor.frontMatterBadge.isHidden)
+        #expect(editor.frontMatterBadge.toolTip == "layout: post\ntitle: *Stacey's*\n\nClick to edit it in the Markdown view.")
+        editor.setShowingMarkdown(true)
+        #expect(editor.frontMatterBadge.isHidden)
+        #expect(textView.string == Self.markdown)
+        editor.setShowingMarkdown(false)
+        #expect(!editor.frontMatterBadge.isHidden)
+        editor.load(markdown: "Text")
+        #expect(editor.frontMatterBadge.isHidden)
+        #expect(editor.markdown == "Text")
+    }
+
+    @Test func theBadgeOpensTheMarkdownViewAtTheFrontMatter() {
+        textView.setSelectedRange(NSRange(location: 5, length: 0))
+        editor.frontMatterBadge.performClick(nil)
+        #expect(editor.isShowingMarkdown)
+        #expect(textView.selectedRange() == NSRange(location: 0, length: 0))
+    }
+
+    @Test func switchingViewsKeepsTheCaretsLine() {
+        // "Text", two characters in.
+        textView.setSelectedRange(NSRange(location: 12, length: 0))
+        editor.setShowingMarkdown(true)
+        #expect(textView.selectedRange().location == (Self.markdown as NSString).length - 2)
+        // Into the front matter, then back: the formatted text's start.
+        textView.setSelectedRange(NSRange(location: 6, length: 0))
+        editor.setShowingMarkdown(false)
+        #expect(textView.selectedRange().location == 0)
+    }
+
+    @Test func editingItInTheMarkdownViewKeepsTheEdit() {
+        editor.setShowingMarkdown(true)
+        step { textView.insertText("date: 2026\n", replacementRange: NSRange(location: 4, length: 0)) }
+        editor.setShowingMarkdown(false)
+        #expect(textView.string == "\nStacey's\nText")
+        #expect(editor.markdown == "---\ndate: 2026\nlayout: post\ntitle: *Stacey's*\n---\n\n# Stacey's\nText")
+    }
+
+    @Test func frontMatterEndingTheFileGetsANewlineBeforeText() {
+        editor.load(markdown: "---\na: 1\n---")
+        #expect(textView.string.isEmpty)
+        #expect(editor.markdown == "---\na: 1\n---")
+        step { textView.insertText("Text", replacementRange: NSRange(location: 0, length: 0)) }
+        #expect(editor.markdown == "---\na: 1\n---\nText")
+    }
+
+    @Test func isLeftOutOfPrinting() throws {
+        let operation = try document.printOperation(withSettings: [:])
+        #expect((operation.view as? NSTextView)?.string == "\nStacey's\nText")
+    }
+}

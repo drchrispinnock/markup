@@ -86,6 +86,12 @@ public struct CodeFence: Hashable, Sendable {
 ///   quote line without its own ">" is a paragraph, though CommonMark would
 ///   carry the quote on.
 /// - A table (`MarkdownTable`) is table lines, kept exactly as they are.
+/// - Front matter, as Jekyll, Hugo and Pandoc read it, is front matter
+///   lines, kept exactly as they are: from a first line of "---" to the
+///   next line of "---" or "...", unless the line after the first is blank
+///   (Pandoc's rule, so a file starting with a horizontal rule isn't taken
+///   for it). YAML's comments start with "#", so it can't be read as
+///   Markdown.
 /// - A heading's ID (`HeadingAnchor`) is `{#id: x}` or `{#x}` on the line
 ///   above it, or `{#x}` at its end, but not both: a heading with one at its
 ///   end leaves the line above as text.
@@ -106,6 +112,10 @@ public enum MarkdownCodec {
         var lines: [Line] = []
         var lists = ListContext()
         var index = 0
+        if let end = frontMatterEnd(in: raw) {
+            lines = raw[...end].map { Line(style: .frontMatter, text: String($0)) }
+            index = end + 1
+        }
         while index < raw.count {
             if let fence = CodeFence(line: raw[index]), let end = closingFence(of: fence, in: raw, after: index) {
                 lists.end()
@@ -234,6 +244,26 @@ public enum MarkdownCodec {
             }
         }
         return texts.joined(separator: "\n")
+    }
+
+    /// The front matter at the start of `markdown`, with the newline after
+    /// it if there is one, and the rest of `markdown`; nil if there is none.
+    public static func frontMatter(in markdown: String) -> (frontMatter: String, body: String)? {
+        let raw = markdown.split(separator: "\n", omittingEmptySubsequences: false)
+        guard let end = frontMatterEnd(in: raw) else { return nil }
+        let frontMatter = raw[...end].joined(separator: "\n") + (end + 1 < raw.count ? "\n" : "")
+        return (frontMatter, raw[(end + 1)...].joined(separator: "\n"))
+    }
+
+    /// The index of the line that closes the front matter `lines` start
+    /// with, if they do. Spaces and tabs may follow each delimiter.
+    private static func frontMatterEnd(in lines: [Substring]) -> Int? {
+        let isBlank = { (text: Substring) in text.allSatisfy { $0 == " " || $0 == "\t" } }
+        let isDelimiter = { (line: Substring, marks: [String]) in
+            marks.contains { line.hasPrefix($0) } && isBlank(line.dropFirst(3))
+        }
+        guard lines.count > 1, isDelimiter(lines[0], ["---"]), !isBlank(lines[1]) else { return nil }
+        return lines.indices.dropFirst().first { isDelimiter(lines[$0], ["---", "..."]) }
     }
 
     /// The index of the line that closes a code block opened by `fence` on
@@ -384,7 +414,7 @@ public enum MarkdownCodec {
 
     /// A line that isn't code or a list item.
     private static func markdown(from line: Line) -> String {
-        guard line.style != .table else { return line.text }
+        guard line.style != .table, line.style != .frontMatter else { return line.text }
         guard line.style != .paragraph else {
             let spaces = line.text.prefix(while: { $0 == " " })
             let rest = line.text.dropFirst(spaces.count)

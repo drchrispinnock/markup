@@ -3,8 +3,9 @@ import MarkupCore
 
 /// Switching between the formatted text and the raw Markdown. Both views have
 /// one line per Markdown line, except for tables, which are one line per cell
-/// in the formatted text, so switching keeps the caret on the same line, the
-/// same distance from its end.
+/// in the formatted text, and front matter, which only the Markdown view
+/// shows, so switching keeps the caret on the same line, the same distance
+/// from its end.
 extension EditorViewController {
     static let markdownAttributes: [NSAttributedString.Key: Any] = [
         .font: NSFont.monospacedSystemFont(ofSize: 14, weight: .regular),
@@ -34,6 +35,7 @@ extension EditorViewController {
         } else {
             load(markdown: markdown)
         }
+        updateFrontMatterBadge()
         // Undo steps refer to places in the text as the other view laid it
         // out, so they can't be replayed here. Clearing them doesn't change
         // whether the document has unsaved changes.
@@ -76,7 +78,7 @@ extension EditorViewController {
         }
         let lines = markdownLineNumbers()
         let found = lines.last { $0.line.location <= caret } ?? (NSRange(location: 0, length: 0), 0)
-        return (found.markdownLine, isTableLine(found.line) ? Int.max : fromEnd)
+        return (found.markdownLine + frontMatterLineCount, isTableLine(found.line) ? Int.max : fromEnd)
     }
 
     private func moveCaret(to position: (line: Int, fromEnd: Int)) {
@@ -92,7 +94,8 @@ extension EditorViewController {
             // The first line showing that Markdown line, or for a table's
             // delimiter row, the header.
             let lines = markdownLineNumbers()
-            let line = lines.last { $0.markdownLine <= position.line }?.markdownLine
+            let markdownLine = position.line - frontMatterLineCount
+            let line = lines.last { $0.markdownLine <= markdownLine }?.markdownLine
             location = lines.first { $0.markdownLine == line }?.line.location ?? 0
         }
         let contents = contentsRange(of: lineRange(at: location))

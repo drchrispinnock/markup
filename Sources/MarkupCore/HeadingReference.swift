@@ -32,11 +32,11 @@ public struct HeadingReference: Hashable, Sendable {
         public var text: String
     }
 
-    /// Every link to a heading in `markdown`, in order. Code blocks have
-    /// none.
+    /// Every link to a heading in `markdown`, in order. Code blocks and
+    /// front matter have none.
     public static func occurrences(inMarkdown markdown: String) -> [Occurrence] {
         var occurrences: [Occurrence] = []
-        for line in MarkdownCodec.lines(fromMarkdown: markdown) where line.style != .code {
+        for line in MarkdownCodec.lines(fromMarkdown: markdown) where line.style != .code && line.style != .frontMatter {
             // A link is the run of spans with its destination, styled or not.
             var previous: String?
             for span in InlineMarkdown.spans(in: line.text) {

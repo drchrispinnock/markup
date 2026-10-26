@@ -3,7 +3,10 @@ import MarkupCore
 
 extension EditorViewController {
     /// Shows `markdown` formatted, or as it is in a plain text document.
+    /// The formatted view keeps the front matter aside, and shows the badge.
     func load(markdown: String) {
+        frontMatter = isPlainText ? nil : MarkdownCodec.frontMatter(in: markdown)?.frontMatter
+        updateFrontMatterBadge()
         storage.setAttributedString(isPlainText ? NSAttributedString(string: markdown, attributes: Self.markdownAttributes)
                                                 : Self.formattedText(fromMarkdown: markdown, imageFolders: imageFolders))
         textView.setSelectedRange(NSRange(location: 0, length: 0))
@@ -21,9 +24,10 @@ extension EditorViewController {
     static let hiddenLines: Set<String> = ["{begin-hanging-paragraphs}", "{end-hanging-paragraphs}"]
 
     /// Markdown as the editor shows it: markers turned into styles, list
-    /// markers and images. Used for editing and printing.
+    /// markers and images, and front matter left out. Used for editing and
+    /// printing.
     static func formattedText(fromMarkdown markdown: String, imageFolders: [URL]) -> NSAttributedString {
-        let lines = MarkdownCodec.lines(fromMarkdown: markdown)
+        let lines = MarkdownCodec.lines(fromMarkdown: markdown).filter { $0.style != .frontMatter }
         let text = NSMutableAttributedString()
         var blockFence: CodeFence?
         var tableLines: [String] = []
@@ -125,7 +129,10 @@ extension EditorViewController {
         if string.length > 0, string.character(at: string.length - 1) == 0x0A {
             lines.append(Line(style: .paragraph, text: ""))
         }
-        return MarkdownCodec.markdown(from: lines)
+        let body = MarkdownCodec.markdown(from: lines)
+        guard let frontMatter else { return body }
+        // Front matter that ended the file needs a newline before new text.
+        return frontMatter + (frontMatter.hasSuffix("\n") || body.isEmpty ? "" : "\n") + body
     }
 
     /// The Markdown lines of the text's lines from the one at `start` to the

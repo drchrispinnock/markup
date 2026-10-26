@@ -89,11 +89,11 @@ public struct Bibliography: Equatable, Sendable {
 
     /// The ranges of `lines` that are bibliographies: each from a line that
     /// is just the start marker to the next that is just the end marker,
-    /// markers included, outside code.
+    /// markers included, outside code and front matter.
     static func blocks(in lines: [Line]) -> [Range<Int>] {
         var blocks: [Range<Int>] = []
         var start: Int?
-        for (index, line) in lines.enumerated() where line.style != .code && line.list == nil {
+        for (index, line) in lines.enumerated() where line.style != .code && line.style != .frontMatter && line.list == nil {
             let text = line.text.trimmingCharacters(in: .whitespaces)
             if text == Self.start {
                 start = index
@@ -109,7 +109,7 @@ public struct Bibliography: Equatable, Sendable {
     /// bibliography read from a file can be compared with one made anew.
     public static func normalized(_ markdown: String) -> String {
         MarkdownCodec.markdown(from: MarkdownCodec.lines(fromMarkdown: markdown).map { line in
-            guard line.style != .code, line.style != .table else { return line }
+            guard line.style != .code, line.style != .table, line.style != .frontMatter else { return line }
             var line = line
             line.text = InlineMarkdown.markdown(for: InlineMarkdown.spans(in: line.text))
             return line
