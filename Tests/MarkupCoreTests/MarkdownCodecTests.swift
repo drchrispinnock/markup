@@ -224,3 +224,16 @@ import Testing
         #expect(MarkdownCodec.lines(fromMarkdown: markdown) == lines)
     }
 }
+
+@Suite struct CodePieceTests {
+    @Test func splitsTextFromCodeBlocks() {
+        #expect(MarkdownCodec.pieces(of: "a\n```swift\nx\n# y\n```\nb") ==
+            [.text("a\n"), .code(["x", "# y"], fence: CodeFence(info: "swift")), .text("b")])
+        // A newline after the block leaves an empty piece; none, nothing.
+        #expect(MarkdownCodec.pieces(of: "```\nx\n```\n") == [.code(["x"], fence: CodeFence()), .text("")])
+        #expect(MarkdownCodec.pieces(of: "```\nx\n```") == [.code(["x"], fence: CodeFence())])
+        // An unclosed or escaped fence is text.
+        #expect(MarkdownCodec.pieces(of: "```\nx") == [.text("```\nx")])
+        #expect(MarkdownCodec.pieces(of: "\\```\nx\n```") == [.text("\\```\nx\n```")])
+    }
+}

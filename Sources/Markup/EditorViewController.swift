@@ -259,6 +259,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         storage.delegate = self
         textView.markerClickHandler = { [unowned self] index in toggleCheckbox(at: index) }
         textView.plainTextForCopy = { [unowned self] range in self.plainText(for: range) }
+        textView.pasteHandler = { [unowned self] text in self.pasteCodeBlocks(text) }
     }
 
     @available(*, unavailable)

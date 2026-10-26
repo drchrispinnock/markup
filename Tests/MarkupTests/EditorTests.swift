@@ -1748,9 +1748,14 @@ import Testing
         #expect(editor.markdown == "**text**\n```\ncode\n```")
     }
 
-    @Test func copiesCodeAsTyped() {
-        editor.load(markdown: "a `b*`\n```\n*c*\n```")
-        #expect(editor.plainText(for: NSRange(location: 0, length: storage.length)) == "a `b*`\n*c*")
+    @Test func copiesWholeCodeLinesAsABlockAndPartsAsTyped() {
+        editor.load(markdown: "a `b*`\n```swift\n*c*\n# d\n```\n````\n```\n````\ne")
+        #expect(editor.plainText(for: NSRange(location: 0, length: storage.length))
+            == "a `b*`\n```swift\n*c*\n# d\n```\n````\n```\n````\ne")
+        // Part of a code line is as typed. The formatted text starts
+        // "a b*\n*c*\n".
+        #expect(editor.plainText(for: NSRange(location: 5, length: 2)) == "*c")
+        #expect(editor.plainText(for: NSRange(location: 2, length: 7)) == "`b*`\n```swift\n*c*\n```\n")
     }
 
     @Test func menusAndButtons() {
@@ -2504,5 +2509,91 @@ import Testing
         defer { cleanUp() }
         editor.load(markdown: "One<br>two")
         #expect(editor.plainText(for: NSRange(location: 0, length: 7)) == "One<br>two")
+    }
+}
+
+/// Copying and pasting in the formatted view: the pasteboard has the
+/// selection's Markdown, and pasting it converts it back.
+@MainActor
+@Suite struct CopyPasteTests {
+    let document: MarkdownDocument
+    let editor: EditorViewController
+    let pasteboard = NSPasteboard(name: NSPasteboard.Name("MarkupTests-\(UUID().uuidString)"))
+
+    init() {
+        _ = NSApplication.shared
+        document = MarkdownDocument()
+        document.undoManager?.groupsByEvent = false
+        document.makeWindowControllers()
+        editor = document.editor
+    }
+
+    private var textView: NSTextView { editor.textView }
+
+    private func step(_ action: () -> Void) {
+        document.undoManager?.beginUndoGrouping()
+        action()
+        document.undoManager?.endUndoGrouping()
+    }
+
+    /// Copies `range` as the Copy command does, onto the test's pasteboard.
+    private func copy(_ range: NSRange) -> String? {
+        pasteboard.clearContents()
+        textView.setSelectedRange(range)
+        _ = textView.writeSelection(to: pasteboard, types: textView.writablePasteboardTypes)
+        return pasteboard.string(forType: .string)
+    }
+
+    /// Pastes the test's pasteboard at `range`, as the Paste command does.
+    private func paste(at range: NSRange) {
+        textView.setSelectedRange(range)
+        step { _ = textView.readSelection(from: pasteboard) }
+    }
+
+    private var everything: NSRange { NSRange(location: 0, length: textView.string.utf16.count) }
+
+    @Test(arguments: ["Some **bold**, *italic* and ***both*** text", "# Heading", "## Sub", "- one\n  - two\n- [x] done",
+                      "1. one\n2. two", "A [link](https://example.org) here", "~~strike~~ `code` H~2~O x^2^ ==mark==",
+                      "> a quote", "```swift\nlet x = 1 // *not* emphasis\n# not a heading\n```",
+                      "Before\n```\ncode\n```\nAfter", "| a | b |\n| - | - |\n| 1 | 2 |\n"])
+    func formattingSurvivesCopyAndPaste(markdown: String) {
+        defer { pasteboard.releaseGlobally() }
+        editor.load(markdown: markdown)
+        // As the editor writes it, which reformats a table.
+        let expected = editor.markdown
+        _ = copy(everything)
+        editor.load(markdown: "")
+        paste(at: NSRange(location: 0, length: 0))
+        #expect(editor.markdown == expected)
+    }
+
+    @Test func theCopyIsMarkdown() {
+        defer { pasteboard.releaseGlobally() }
+        editor.load(markdown: "- **one**\n- two")
+        #expect(copy(everything) == "- **one**\n- two")
+    }
+
+    @Test func aCodeBlockPastedInsideALineGoesOnLinesOfItsOwn() {
+        defer { pasteboard.releaseGlobally() }
+        editor.load(markdown: "```\n*x*\n```")
+        _ = copy(everything)
+        editor.load(markdown: "Hello World")
+        paste(at: NSRange(location: 6, length: 0))
+        #expect(editor.markdown == "Hello \n```\n*x*\n```\nWorld")
+        document.undoManager?.undo()
+        #expect(editor.markdown == "Hello World")
+        // At the end of a line, the line after stays as it was.
+        editor.load(markdown: "Hello\nWorld")
+        paste(at: NSRange(location: 5, length: 0))
+        #expect(editor.markdown == "Hello\n```\n*x*\n```\nWorld")
+    }
+
+    @Test func aCodeBlockPastedIntoCodeIsItsLines() {
+        defer { pasteboard.releaseGlobally() }
+        editor.load(markdown: "```\none\ntwo\n```")
+        _ = copy(NSRange(location: 4, length: 3))
+        #expect(pasteboard.string(forType: .string) == "```\ntwo\n```")
+        paste(at: NSRange(location: 3, length: 0))
+        #expect(editor.markdown == "```\nonetwo\ntwo\n```")
     }
 }

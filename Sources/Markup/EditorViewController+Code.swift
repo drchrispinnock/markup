@@ -70,6 +70,48 @@ extension EditorViewController {
         return true
     }
 
+    /// Pastes `text`, Markdown holding fenced code blocks, at the selection:
+    /// the text around each block as if it were typed, so its shortcuts
+    /// convert it, and each block as code lines kept as written, which
+    /// typing would convert. Into a code line, one block goes in as its
+    /// lines. Returns false, to paste as usual, for text with no blocks.
+    func pasteCodeBlocks(_ text: String) -> Bool {
+        guard !isShowingMarkdown, !isPlainText else { return false }
+        let pieces = MarkdownCodec.pieces(of: text)
+        guard pieces.contains(where: { if case .code = $0 { true } else { false } }) else { return false }
+        let line = lineRange(at: textView.selectedRange().location)
+        if line.length > 0 ? storage.blockStyle(at: line.location) == .code : styleAtCaretForEmptyLine == .code {
+            guard pieces.count == 1, case .code(let lines, _) = pieces[0] else { return false }
+            textView.insertText(lines.joined(separator: "\n"), replacementRange: textView.selectedRange())
+            return true
+        }
+        for (index, piece) in pieces.enumerated() {
+            let range = textView.selectedRange()
+            switch piece {
+            case .text(let text):
+                if !text.isEmpty || range.length > 0 { textView.insertText(text, replacementRange: range) }
+            case .code(let lines, let fence):
+                // A block is on lines of its own: it ends the line before
+                // it, and the text after the caret, or more pasted text,
+                // goes on the line after it.
+                let caretLine = lineRange(at: range.location)
+                var attributes = BlockStyle.code.attributes
+                if fence != CodeFence() { attributes[.codeFence] = fence }
+                let code = NSMutableAttributedString(string: lines.joined(separator: "\n"), attributes: attributes)
+                if index < pieces.count - 1 || NSMaxRange(range) < NSMaxRange(contentsRange(of: caretLine)) {
+                    code.append(NSAttributedString(string: "\n", attributes: attributes))
+                }
+                if range.location > caretLine.location {
+                    code.insert(NSAttributedString(string: "\n", attributes: textView.typingAttributes), at: 0)
+                }
+                replaceCharacters(in: range, with: code)
+                textView.setSelectedRange(NSRange(location: range.location + code.length, length: 0))
+            }
+        }
+        undoManager?.setActionName("Paste")
+        return true
+    }
+
     /// The style an empty last line would be typed in.
     var styleAtCaretForEmptyLine: BlockStyle {
         (textView.typingAttributes[.blockStyle] as? Int).flatMap(BlockStyle.init) ?? .paragraph

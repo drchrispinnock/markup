@@ -252,9 +252,19 @@ extension EditorViewController {
             return text
         }
         var text = ""
+        // Whole code lines, written as a block between fences once the
+        // block ends, and whether a newline followed the last.
+        var codeLines: [Line] = []
+        var codeEndsWithNewline = false
+        func writeCode() {
+            guard !codeLines.isEmpty else { return }
+            text += MarkdownCodec.markdown(from: codeLines) + (codeEndsWithNewline ? "\n" : "")
+            codeLines = []
+        }
         storage.enumerateAttribute(.listMarker, in: range) { value, run, _ in
             guard value != nil else {
-                // Inline styles are written line by line. Code is as typed.
+                // Inline styles are written line by line. Part of a code
+                // line is as typed.
                 let string = storage.string as NSString
                 var location = run.location
                 while location < NSMaxRange(run) {
@@ -262,6 +272,21 @@ extension EditorViewController {
                     let end = newline.location == NSNotFound ? NSMaxRange(run) : newline.location
                     let segment = NSRange(location: location, length: end - location)
                     let line = lineRange(at: location)
+                    if segment == contentsRange(of: line), line.length > 0, storage.blockStyle(at: line.location) == .code {
+                        // Whole code lines are copied as a block, so they
+                        // paste back as one. A change of fence starts
+                        // another.
+                        let fence = storage.attribute(.codeFence, at: line.location, effectiveRange: nil) as? CodeFence
+                        let previousFence = line.location > 0
+                            ? storage.attribute(.codeFence, at: line.location - 1, effectiveRange: nil) as? CodeFence : nil
+                        let startsBlock = codeLines.isEmpty || previousFence != fence
+                        codeLines.append(Line(style: .code, text: markdownText(in: segment),
+                                              fence: startsBlock ? fence ?? CodeFence() : nil))
+                        codeEndsWithNewline = newline.location != NSNotFound
+                        location = newline.location == NSNotFound ? end : NSMaxRange(newline)
+                        continue
+                    }
+                    writeCode()
                     if segment == contentsRange(of: line), isTitledHeading(line) {
                         // A whole heading is copied as one, with its ID, so
                         // that moving it keeps the links to it.
@@ -280,10 +305,12 @@ extension EditorViewController {
                 }
                 return
             }
+            writeCode()
             for index in run.location..<NSMaxRange(run) {
                 text += markdownPrefix(ofListLineAt: index)
             }
         }
+        writeCode()
         return text
     }
 }

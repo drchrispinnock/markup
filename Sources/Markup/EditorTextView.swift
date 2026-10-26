@@ -1,7 +1,8 @@
 import AppKit
 
 /// The editor's text view. It passes clicks on list markers to the
-/// controller, and lets the controller decide what copied text looks like.
+/// controller, and lets the controller decide what copied text looks like
+/// and how pasted text goes in.
 @MainActor
 final class EditorTextView: NSTextView {
     /// Called with the character index of a clicked list marker. Returns true
@@ -10,6 +11,10 @@ final class EditorTextView: NSTextView {
 
     /// The plain text to put on the pasteboard for a range of the document.
     var plainTextForCopy: ((NSRange) -> String)?
+
+    /// Called with pasted or dropped text. Returns true if it put the text
+    /// in, or false to leave it to the text view.
+    var pasteHandler: ((String) -> Bool)?
 
     // MARK: - Spelling and grammar
 
@@ -97,12 +102,24 @@ final class EditorTextView: NSTextView {
         return textStorage.attribute(.listMarker, at: index, effectiveRange: nil) != nil ? index : nil
     }
 
+    /// The type a plain text view asks to write its text as: the old name for
+    /// `.string`, which isn't equal to it.
+    static let legacyStringType = NSPasteboard.PasteboardType("NSStringPboardType")
+
     override func writeSelection(to pboard: NSPasteboard, type: NSPasteboard.PasteboardType) -> Bool {
-        guard type == .string, let plainTextForCopy else {
+        guard type == .string || type == Self.legacyStringType, let plainTextForCopy else {
             return super.writeSelection(to: pboard, type: type)
         }
         let text = selectedRanges.map { plainTextForCopy($0.rangeValue) }.joined(separator: "\n")
         return pboard.setString(text, forType: .string)
+    }
+
+    override func readSelection(from pboard: NSPasteboard, type: NSPasteboard.PasteboardType) -> Bool {
+        guard type == .string || type == Self.legacyStringType, let pasteHandler,
+              let text = pboard.string(forType: .string), pasteHandler(text) else {
+            return super.readSelection(from: pboard, type: type)
+        }
+        return true
     }
 }
 

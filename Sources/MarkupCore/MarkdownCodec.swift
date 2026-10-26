@@ -246,6 +246,40 @@ public enum MarkdownCodec {
         return texts.joined(separator: "\n")
     }
 
+    /// A piece of Markdown that `pieces(of:)` splits off: text, or a fenced
+    /// code block's lines.
+    public enum Piece: Equatable, Sendable {
+        case text(String)
+        case code([String], fence: CodeFence)
+    }
+
+    /// `markdown` as text and the fenced code blocks between, in order. Each
+    /// text piece ends with the newline before the block after it, and a
+    /// block is followed by the rest after its closing line's newline: a
+    /// block that had one is followed by a piece, if only an empty one.
+    public static func pieces(of markdown: String) -> [Piece] {
+        let raw = markdown.split(separator: "\n", omittingEmptySubsequences: false)
+        var pieces: [Piece] = []
+        var text: [Substring] = []
+        var index = 0
+        let flush = { (endsWithNewline: Bool) in
+            if !text.isEmpty { pieces.append(.text(text.joined(separator: "\n") + (endsWithNewline ? "\n" : ""))) }
+            text = []
+        }
+        while index < raw.count {
+            if let fence = CodeFence(line: raw[index]), let end = closingFence(of: fence, in: raw, after: index) {
+                flush(true)
+                pieces.append(.code(raw[index + 1..<end].map(String.init), fence: fence))
+                index = end + 1
+                continue
+            }
+            text.append(raw[index])
+            index += 1
+        }
+        flush(false)
+        return pieces
+    }
+
     /// The front matter at the start of `markdown`, with the newline after
     /// it if there is one, and the rest of `markdown`; nil if there is none.
     public static func frontMatter(in markdown: String) -> (frontMatter: String, body: String)? {
