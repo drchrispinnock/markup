@@ -3,6 +3,42 @@
     <channel>
         <title>Markup</title>
         <item>
+            <title>0.5</title>
+            <pubDate>Mon, 26 Oct 2026 19:17:13 +0000</pubDate>
+            <sparkle:version>7</sparkle:version>
+            <sparkle:shortVersionString>0.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Writing</h3>
+<ul>
+<li><strong>Headings 1 to 6.</strong> The style menu's Heading, Subheading and Subsubheading are now called Heading 1, Heading 2 and Heading 3. Headings 4, 5 and 6 work too: type <code>#### </code>, <code>##### </code> or <code>###### </code> at the start of a line. They aren't in the style menu, but it shows them on their lines. A line starting <code>#### </code> used to stay as plain text; it is now a heading, as in standard Markdown.</li>
+<li><strong>Copy and paste keeps formatting.</strong> Copying in the Formatted view now puts the text on the clipboard as Markdown, so bold, italic and the other styles, links, headings, lists, quotes, tables and code blocks all survive being pasted back. Before, only the bare text was copied. A pasted code block keeps its contents exactly as written, and goes on lines of its own. Other apps receive the Markdown text.</li>
+<li><strong>Front matter.</strong> A YAML header at the top of a file, as Jekyll, Hugo and Pandoc use (a first line of <code>---</code>, up to the next <code>---</code> or <code>...</code>), is hidden in the Formatted view and saved exactly as written. A Front Matter badge in the header bar shows it when you hover over it; click the badge to edit it in the Markdown view. Nothing in the header is treated as Markdown, so a YAML <code># comment</code> is no longer mistaken for a heading.</li>
+<li><strong>HTML tags.</strong> A few HTML tags now show as what they do, in the Formatted view. The tags themselves are hidden but kept, and saved exactly as written; other HTML stays as text.
+<ul>
+<li><code>&lt;br&gt;</code> breaks the line where it is. At the end of a line, where the line breaks anyway, it is hidden.</li>
+<li><code>&lt;img src=&quot;…&quot;&gt;</code> shows the image, as <code>![alt](path)</code> does.</li>
+<li><code>&lt;p&gt;</code> and <code>&lt;/p&gt;</code> are hidden.</li>
+<li><code>&lt;strong&gt;</code> and <code>&lt;b&gt;</code> make text bold, <code>&lt;em&gt;</code> and <code>&lt;i&gt;</code> italic, and <code>&lt;h1&gt;</code> to <code>&lt;h6&gt;</code> give it that heading's size, up to their closing tag on the same line. A line with an HTML heading is still a paragraph to Markup: it gets no heading ID and isn't offered in Cross Link.
+</li></ul></li>
+<li><strong>Images in websites.</strong> An image path starting with <code>/</code>, such as Jekyll's <code>/assets/photo.jpg</code>, is looked up in the image folders without the <code>/</code>, and the text keeps it. The folder above the document is now searched as well, so a post in a Jekyll site's <code>_posts</code> folder finds the site's <code>assets</code>. The order is: the images directory in Settings, the document's folder, its <code>resources</code> and <code>images</code> folders, then the folder above it.
+</li></ul>
+<h3>Projects</h3>
+<ul>
+<li><strong>The project folder is at the top of the sidebar</strong>, with its files and folders inside it. Every folder, the project folder included, opens and closes.</li>
+<li><strong>Right-click the sidebar</strong> for New File…, New Folder…, Duplicate, Rename… and Delete:
+<ul>
+<li>New File… and New Folder… ask for a name and make it in the folder you clicked, or in the folder of the file you clicked. A file name without an extension gets <code>.md</code>, and the new file opens.</li>
+<li>Duplicate copies a file or folder beside it, named as Finder names copies ("chapter copy.md").</li>
+<li>Rename… renames a file or folder. Files from it that are open in the window move with it, unsaved changes and all. Links to it from other files aren't updated, so they will show as broken.</li>
+<li>Delete moves the file or folder to the Trash. If it holds files open in the window with unsaved changes, it asks first.
+</li></ul></li>
+<li><strong>Fix:</strong> selecting a file inside a closed folder could fail to show it in the sidebar.</li>
+</ul>
+<p>Signed with a Developer ID and notarized by Apple. Earlier versions can update with Markup &gt; Check for Updates.</p>
+]]></description>
+            <enclosure url="https://github.com/drchrispinnock/markup/releases/download/v0.5/Markup-0.5.zip" length="3444531" type="application/octet-stream" sparkle:edSignature="okCKiCxNhPvkiGpBL8hocGWyBk9Ej00Uv9iZ3jfWXQPD8ifcQZATMNTdJXiKNXfLvVEJua39NywpT6+FQSLpBg=="/>
+        </item>
+        <item>
             <title>0.4.1</title>
             <pubDate>Mon, 26 Oct 2026 09:43:57 +0000</pubDate>
             <sparkle:version>6</sparkle:version>
@@ -17,14 +53,6 @@
             <sparkle:shortVersionString>0.4</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/drchrispinnock/markup/releases/download/v0.4/Markup-0.4.zip" length="3330598" type="application/octet-stream" sparkle:edSignature="nS+RKSQLxelS8RRlhvVE9rqjbyF7ewSGu9uZPMAjsL/2oTdp4qTZE1X89XTYOBQf4cQgXgrx6QN5JM4wU5iHDQ=="/>
-        </item>
-        <item>
-            <title>0.3.1</title>
-            <pubDate>Thu, 22 Oct 2026 18:44:00 +0100</pubDate>
-            <sparkle:version>4</sparkle:version>
-            <sparkle:shortVersionString>0.3.1</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/drchrispinnock/markup/releases/download/v0.3.1/Markup-0.3.1.zip" length="3270486" type="application/octet-stream" sparkle:edSignature="IPrnXgMEZD+UcD1OowsGWOFpIyYfBP68kkkEAqQSpLtu4LlfqaoLfcI4UzVzj8N+vEfpK2VPGG4/Z2Nn8z2sDQ=="/>
         </item>
     </channel>
 </rss>
