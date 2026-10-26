@@ -26,9 +26,10 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
     /// (`markdownFiles()`), until the folder changes.
     var filesOnDisk: [(url: URL, markdown: String, ids: Set<String>)]?
 
-    /// The values in the project's `tags.txt` as last read (`tagValues()`),
-    /// until the folder changes: `.some(nil)` when there is no such file.
-    var tagValuesOnDisk: [String: String]??
+    /// The values in the project's `variables.txt` and `tags.txt` as last
+    /// read (`variableValues()`), until the folder changes: `.some(nil)`
+    /// when there is neither.
+    var variableValuesOnDisk: [String: String]??
     /// The project's `bibliography.txt` as last read (`bibliography()`),
     /// likewise.
     var bibliographyOnDisk: Bibliography??

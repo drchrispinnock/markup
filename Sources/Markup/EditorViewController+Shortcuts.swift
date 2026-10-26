@@ -14,8 +14,9 @@ extension EditorViewController {
     /// - "![alt](path)" anywhere in a line becomes the image.
     /// - "[text](destination)" anywhere in a line becomes a link.
     /// - "<!-- comment -->" anywhere in a line is hidden.
-    /// - A tag, "<!-- MARKUPTAG name-->value<!-- ENDMARKUPTAG -->", and with
-    ///   the quick tags setting, "@name@", anywhere in a line becomes the tag.
+    /// - A variable, "<!-- MARKUPTAG name-->value<!-- ENDMARKUPTAG -->", and
+    ///   with the quick variables setting, "@name@", anywhere in a line
+    ///   becomes the variable.
     /// - "{#id: x}" or "{#x}" alone on the line above a heading becomes the
     ///   heading's ID.
     ///

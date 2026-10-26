@@ -71,13 +71,13 @@ enum MainMenu {
         insertMenu.addItem(withTitle: "Table…", action: #selector(EditorViewController.insertTable(_:)), keyEquivalent: "")
         insertMenu.addItem(withTitle: "Image…", action: #selector(EditorViewController.insertImage(_:)), keyEquivalent: "")
         insertMenu.addItem(.separator())
-        insertMenu.addItem(withTitle: "Tag…", action: #selector(EditorViewController.insertTag(_:)), keyEquivalent: "")
+        insertMenu.addItem(withTitle: "Variable…", action: #selector(EditorViewController.insertVariable(_:)), keyEquivalent: "")
         insertMenu.addItem(withTitle: "Citation…", action: #selector(EditorViewController.insertCitation(_:)), keyEquivalent: "")
         insertMenu.addItem(withTitle: "Bibliography", action: #selector(EditorViewController.insertBibliography(_:)),
                            keyEquivalent: "")
-        // Only project windows have a tags.txt or bibliography.txt.
-        insertMenu.addItem(withTitle: "Update Tags in Project",
-                           action: #selector(ProjectWindowController.updateTagsInProject(_:)), keyEquivalent: "")
+        // Only project windows have a variables.txt or bibliography.txt.
+        insertMenu.addItem(withTitle: "Update Variables in Project",
+                           action: #selector(ProjectWindowController.updateVariablesInProject(_:)), keyEquivalent: "")
         mainMenu.addItem(submenu: insertMenu, title: "Insert")
 
         let viewMenu = NSMenu(title: "View")

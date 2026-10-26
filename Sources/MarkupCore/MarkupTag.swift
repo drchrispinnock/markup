@@ -2,13 +2,13 @@ import Foundation
 
 /// A tag: a value kept up to date from a project's files, written between
 /// two HTML comments that name it. Markdown readers show only the value.
-/// - A tag, `<!-- MARKUPTAG noofbakers-->2<!-- ENDMARKUPTAG -->`, takes its
-///   value from `tags.txt`.
+/// - A variable, `<!-- MARKUPTAG noofbakers-->2<!-- ENDMARKUPTAG -->`, takes
+///   its value from `variables.txt` (or `tags.txt`).
 /// - A citation, `<!-- MARKUPBIBTAG R-1 -->[1]<!-- ENDMARKUPBIBTAG -->`, is
 ///   the number of its entry in `bibliography.txt`.
 public struct MarkupTag: Hashable, Sendable {
     public enum Kind: Hashable, Sendable {
-        case tag
+        case variable
         case citation
     }
 
@@ -20,19 +20,19 @@ public struct MarkupTag: Hashable, Sendable {
     /// The comment after the value, as written.
     var closing: String
 
-    /// The value shown for a tag that `tags.txt` has no value for.
+    /// The value shown for a variable that has no value.
     public static let unknownValue = "??"
     /// The value shown for a citation that `bibliography.txt` has no entry
     /// for.
     public static let unknownCitation = "[??]"
 
     /// A tag written in the usual form.
-    public init(name: String, value: String, kind: Kind = .tag) {
+    public init(name: String, value: String, kind: Kind = .variable) {
         self.kind = kind
         self.name = name
         self.value = value
         switch kind {
-        case .tag:
+        case .variable:
             opening = "<!-- MARKUPTAG \(name)-->"
             closing = "<!-- ENDMARKUPTAG -->"
         case .citation:
@@ -52,7 +52,7 @@ public struct MarkupTag: Hashable, Sendable {
 
     /// Whether the value is the one shown when there is none.
     public var isUnknown: Bool {
-        value == (kind == .tag ? Self.unknownValue : Self.unknownCitation)
+        value == (kind == .variable ? Self.unknownValue : Self.unknownCitation)
     }
 
     /// Whether `name` can be a tag's name: letters, digits, `_`, `-` and `.`.
@@ -67,7 +67,7 @@ public struct MarkupTag: Hashable, Sendable {
             + word + #"TAG\s*-->)"#)
     }
 
-    private static let patterns: [(Kind, NSRegularExpression)] = [(.tag, pattern("")), (.citation, pattern("BIB"))]
+    private static let patterns: [(Kind, NSRegularExpression)] = [(.variable, pattern("")), (.citation, pattern("BIB"))]
 
     /// The tags and citations in `text`, in order, with their ranges as
     /// UTF-16 offsets. A value can't hold a newline or a comment.
@@ -86,14 +86,14 @@ public struct MarkupTag: Hashable, Sendable {
         return found.sorted { $0.range.lowerBound < $1.range.lowerBound }
     }
 
-    /// This tag with its value from `sources`: a tag's from the tags, or
-    /// unknown; a citation's entry number in the bibliography, or unknown.
+    /// This tag with its value from `sources`: a variable's from the
+    /// variables, or unknown; a citation's entry number in the bibliography, or unknown.
     /// Without the file it needs, it is unchanged.
     public func updated(from sources: TagSources) -> MarkupTag {
         var tag = self
         switch kind {
-        case .tag:
-            guard let values = sources.tags else { return self }
+        case .variable:
+            guard let values = sources.variables else { return self }
             tag.value = values[name] ?? Self.unknownValue
         case .citation:
             guard let bibliography = sources.bibliography else { return self }
@@ -102,7 +102,7 @@ public struct MarkupTag: Hashable, Sendable {
         return tag
     }
 
-    /// `markdown` with every tag's and citation's value, and every
+    /// `markdown` with every variable's and citation's value, and every
     /// bibliography, set from `sources`, except in code blocks.
     public static func updating(markdown: String, from sources: TagSources) -> String {
         var lines = MarkdownCodec.lines(fromMarkdown: markdown)
@@ -133,31 +133,40 @@ public struct MarkupTag: Hashable, Sendable {
     }
 }
 
-/// Where tags and citations get their values: the project's `tags.txt`
-/// and `bibliography.txt`, either of which may be missing.
+/// Where variables and citations get their values: the project's
+/// `variables.txt` (or `tags.txt`) and `bibliography.txt`, either of which
+/// may be missing.
 public struct TagSources: Equatable, Sendable {
-    public var tags: [String: String]?
+    public var variables: [String: String]?
     public var bibliography: Bibliography?
     /// Whether a bibliography is written between Leanpub's
     /// `{begin-hanging-paragraphs}` and `{end-hanging-paragraphs}`.
     public var hangingBibliography: Bool
 
-    public init(tags: [String: String]? = nil, bibliography: Bibliography? = nil, hangingBibliography: Bool = true) {
-        self.tags = tags
+    public init(variables: [String: String]? = nil, bibliography: Bibliography? = nil, hangingBibliography: Bool = true) {
+        self.variables = variables
         self.bibliography = bibliography
         self.hangingBibliography = hangingBibliography
     }
 
-    public var isEmpty: Bool { tags == nil && bibliography == nil }
+    public var isEmpty: Bool { variables == nil && bibliography == nil }
 }
 
-/// A project's `tags.txt`: a line per tag, its name and value separated by
-/// `|`. Blank lines and lines starting with `#` are ignored, as are any
-/// fields after the second.
-public enum TagFile {
-    public static let name = "tags.txt"
+/// A project's `variables.txt`: a line per variable, its name and value
+/// separated by `|`. Blank lines and lines starting with `#` are ignored, as
+/// are any fields after the second.
+public enum VariableFile {
+    /// The files read, in order: `variables.txt`, and for now `tags.txt`,
+    /// the name variables had when they were called tags.
+    public static let names = ["variables.txt", "tags.txt"]
 
-    /// Each tag's value, by name. A line without a value gives none.
+    /// The values of the files' `texts`, in the order of `names`: each
+    /// variable's from the first file that has a value for it.
+    public static func values(fromFiles texts: [String]) -> [String: String] {
+        texts.reversed().reduce(into: [:]) { values, text in values.merge(Self.values(from: text)) { $1 } }
+    }
+
+    /// Each variable's value, by name. A line without a value gives none.
     public static func values(from text: String) -> [String: String] {
         var values: [String: String] = [:]
         for (name, rest) in fields(of: text) {
@@ -169,7 +178,7 @@ public enum TagFile {
 
     /// Each line's name and the rest of the line after the first `|`,
     /// skipping blank lines, lines starting with `#`, lines without a `|`
-    /// and names that can't be a tag's.
+    /// and names that can't be a variable's.
     static func fields(of text: String) -> [(name: String, rest: String)] {
         text.split(omittingEmptySubsequences: true, whereSeparator: \.isNewline).compactMap { line in
             let trimmed = line.trimmingCharacters(in: .whitespaces)

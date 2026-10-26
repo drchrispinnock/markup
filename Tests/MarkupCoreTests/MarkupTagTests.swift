@@ -24,9 +24,13 @@ import Testing
         #expect(MarkupTag.tags(in: text).isEmpty)
     }
 
-    @Test func readsTheTagFile() {
+    @Test func readsTheVariablesFile() {
         let file = "# Tags\n\nnoofbakers|2\n  name | Signet |extra\nempty|\nnopipe\nbad name|x\r\nlast|3"
-        #expect(TagFile.values(from: file) == ["noofbakers": "2", "name": "Signet", "last": "3"])
+        #expect(VariableFile.values(from: file) == ["noofbakers": "2", "name": "Signet", "last": "3"])
+    }
+
+    @Test func theFirstFileWithAValueGivesIt() {
+        #expect(VariableFile.values(fromFiles: ["a|1\n", "a|2\nb|3\n"]) == ["a": "1", "b": "3"])
     }
 
     @Test func updatesValuesOutsideCode() {
@@ -37,7 +41,7 @@ import Testing
             <!-- MARKUPTAG a-->old<!-- ENDMARKUPTAG -->
             ```
             """
-        #expect(MarkupTag.updating(markdown: markdown, from: TagSources(tags: ["a": "new"])) == """
+        #expect(MarkupTag.updating(markdown: markdown, from: TagSources(variables: ["a": "new"])) == """
             # <!-- MARKUPTAG a-->new<!-- ENDMARKUPTAG -->
             Text <!-- MARKUPTAG a-->new<!-- ENDMARKUPTAG --> and <!-- MARKUPTAG gone-->??<!-- ENDMARKUPTAG -->
             ```
@@ -45,7 +49,7 @@ import Testing
             ```
             """)
         let current = "x <!-- MARKUPTAG a-->new<!-- ENDMARKUPTAG -->\n"
-        #expect(MarkupTag.updating(markdown: current, from: TagSources(tags: ["a": "new"])) == current)
+        #expect(MarkupTag.updating(markdown: current, from: TagSources(variables: ["a": "new"])) == current)
     }
 
     @Test func inlineMarkdownKeepsATagWhole() {
@@ -120,7 +124,7 @@ import Testing
 
     @Test func readsCitations() {
         let tags = MarkupTag.tags(in: "See <!-- MARKUPBIBTAG R-1 -->[1]<!-- ENDMARKUPBIBTAG --> and <!-- MARKUPTAG a-->x<!-- ENDMARKUPTAG -->")
-        #expect(tags.map(\.tag.kind) == [.citation, .tag])
+        #expect(tags.map(\.tag.kind) == [.citation, .variable])
         #expect(tags[0].tag == MarkupTag(name: "R-1", value: "[1]", kind: .citation))
         #expect(MarkupTag.citation("R-1").markdown == "<!-- MARKUPBIBTAG R-1 -->[??]<!-- ENDMARKUPBIBTAG -->")
         // The end must match the start.

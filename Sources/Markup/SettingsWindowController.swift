@@ -13,7 +13,7 @@ final class SettingsWindowController: NSWindowController {
     let crossFileLinksPopUp = NSPopUpButton()
     let hangingBibliographyCheckbox = NSButton(checkboxWithTitle: "Use Leanpub's hanging paragraphs", target: nil,
                                                action: nil)
-    let quickTagsCheckbox = NSButton(checkboxWithTitle: "Typing @name@ inserts the tag", target: nil, action: nil)
+    let quickVariablesCheckbox = NSButton(checkboxWithTitle: "Typing @name@ inserts the variable", target: nil, action: nil)
 
     static let formTitles: [HeadingAnchor.Form: String] = [
         .idLine: "{#id: x} above the heading",
@@ -82,14 +82,14 @@ final class SettingsWindowController: NSWindowController {
         idNote.textColor = .secondaryLabelColor
         idNote.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
 
-        quickTagsCheckbox.target = self
-        quickTagsCheckbox.action = #selector(quickTagsChanged(_:))
+        quickVariablesCheckbox.target = self
+        quickVariablesCheckbox.action = #selector(quickVariablesChanged(_:))
         hangingBibliographyCheckbox.target = self
-        hangingBibliographyCheckbox.action = #selector(quickTagsChanged(_:))
-        let tagsNote = NSTextField(wrappingLabelWithString:
-            "Tags show values from the project's tags.txt, and citations numbers from its bibliography.txt.")
-        tagsNote.textColor = .secondaryLabelColor
-        tagsNote.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        hangingBibliographyCheckbox.action = #selector(quickVariablesChanged(_:))
+        let variablesNote = NSTextField(wrappingLabelWithString:
+            "Variables show values from the project's variables.txt, and citations numbers from its bibliography.txt.")
+        variablesNote.textColor = .secondaryLabelColor
+        variablesNote.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
 
         let buttons = NSStackView(views: [chooseButton, clearButton])
         let grid = NSGridView(views: [
@@ -101,9 +101,9 @@ final class SettingsWindowController: NSWindowController {
             [NSTextField(labelWithString: "Make from:"), headingIDSchemePopUp],
             [NSGridCell.emptyContentView, idNote],
             [NSTextField(labelWithString: "Links to other files:"), crossFileLinksPopUp],
-            [NSTextField(labelWithString: "Quick tags:"), quickTagsCheckbox],
+            [NSTextField(labelWithString: "Quick variables:"), quickVariablesCheckbox],
             [NSTextField(labelWithString: "Bibliography:"), hangingBibliographyCheckbox],
-            [NSGridCell.emptyContentView, tagsNote],
+            [NSGridCell.emptyContentView, variablesNote],
         ])
         grid.row(at: 3).topPadding = 12
         grid.row(at: 8).topPadding = 12
@@ -125,7 +125,7 @@ final class SettingsWindowController: NSWindowController {
         window.contentView = contentView
         showImagesDirectory()
         showHeadingIDs()
-        quickTagsCheckbox.state = settings.quickTags ? .on : .off
+        quickVariablesCheckbox.state = settings.quickVariables ? .on : .off
         hangingBibliographyCheckbox.state = settings.hangingBibliography ? .on : .off
     }
 
@@ -170,8 +170,8 @@ final class SettingsWindowController: NSWindowController {
         showHeadingIDs()
     }
 
-    @objc func quickTagsChanged(_ sender: Any?) {
-        settings.quickTags = quickTagsCheckbox.state == .on
+    @objc func quickVariablesChanged(_ sender: Any?) {
+        settings.quickVariables = quickVariablesCheckbox.state == .on
         settings.hangingBibliography = hangingBibliographyCheckbox.state == .on
     }
 

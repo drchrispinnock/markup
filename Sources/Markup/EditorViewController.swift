@@ -252,7 +252,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
 
     @objc private func projectFilesChanged(_ notification: Notification) {
         guard let project = notification.object as? ProjectWindowController, project === document?.project else { return }
-        // tags.txt may have changed.
+        // variables.txt may have changed.
         updateTags()
         scheduleLinkCheck(afterEdit: false)
     }

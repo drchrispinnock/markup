@@ -55,7 +55,7 @@ extension ProjectWindowController {
     /// Forgets the files read from disk, and tells the editors.
     func filesChanged() {
         filesOnDisk = nil
-        tagValuesOnDisk = nil
+        variableValuesOnDisk = nil
         bibliographyOnDisk = nil
         NotificationCenter.default.post(name: .markupProjectFilesChanged, object: self)
     }

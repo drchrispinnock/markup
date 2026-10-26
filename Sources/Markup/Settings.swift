@@ -12,7 +12,8 @@ final class Settings {
     static let headingIDFormKey = "MarkupHeadingIDForm"
     static let headingIDSchemeKey = "MarkupHeadingIDScheme"
     static let crossFileLinksKey = "MarkupCrossFileLinks"
-    static let quickTagsKey = "MarkupQuickTags"
+    // Named when variables were called tags, so the setting is kept.
+    static let quickVariablesKey = "MarkupQuickTags"
     static let hangingBibliographyKey = "MarkupHangingBibliography"
 
     let defaults: UserDefaults
@@ -71,10 +72,10 @@ final class Settings {
         set { defaults.set(newValue.rawValue, forKey: Self.crossFileLinksKey) }
     }
 
-    /// Whether typing `@name@` inserts the tag `name`. Off unless turned on.
-    var quickTags: Bool {
-        get { defaults.bool(forKey: Self.quickTagsKey) }
-        set { defaults.set(newValue, forKey: Self.quickTagsKey) }
+    /// Whether typing `@name@` inserts the variable `name`. Off unless turned on.
+    var quickVariables: Bool {
+        get { defaults.bool(forKey: Self.quickVariablesKey) }
+        set { defaults.set(newValue, forKey: Self.quickVariablesKey) }
     }
 
     /// Whether Insert > Bibliography writes the bibliography between

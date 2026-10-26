@@ -1,34 +1,34 @@
 import AppKit
 import MarkupCore
 
-/// Tags and citations (`MarkupTag`): each is one attachment character
-/// showing its value (`TagAttachmentCell`), carrying `.markupTag`. Tags'
-/// values come from the project's `tags.txt`, citations' (`[1]`) from its
-/// `bibliography.txt`, and bibliographies (`Bibliography`) are written
-/// from that too. They follow the files: when they change, and when the
-/// editor appears, `updateTags()` sets every value and rewrites every
-/// bibliography, as an edit that can be undone. A document outside a
-/// project keeps what it has.
+/// Variables and citations (`MarkupTag`): each is one attachment character
+/// showing its value (`TagAttachmentCell`), carrying `.markupTag`.
+/// Variables' values come from the project's `variables.txt` (or
+/// `tags.txt`), citations' (`[1]`) from its `bibliography.txt`, and
+/// bibliographies (`Bibliography`) are written from that too. They follow
+/// the files: when they change, and when the editor appears, `updateTags()`
+/// sets every value and rewrites every bibliography, as an edit that can be
+/// undone. A document outside a project keeps what it has.
 ///
-/// Insert > Tag asks for a tag's name, offering those in `tags.txt`. With
-/// the quick tags setting, `@name@` typed becomes that tag. Insert >
-/// Citation offers the bibliography's entries, and Insert > Bibliography
-/// writes the bibliography.
+/// Insert > Variable asks for a variable's name, offering those in
+/// `variables.txt`. With the quick variables setting, `@name@` typed
+/// becomes that variable. Insert > Citation offers the bibliography's
+/// entries, and Insert > Bibliography writes the bibliography.
 extension EditorViewController {
-    /// The project's tags and bibliography, or nil outside a project.
+    /// The project's variables and bibliography, or nil outside a project.
     var tagSources: TagSources? {
         document?.project?.tagSources(settings: settings)
     }
 
-    /// Sets every tag's and citation's value, and every bibliography, from
-    /// the project's files.
+    /// Sets every variable's and citation's value, and every bibliography,
+    /// from the project's files.
     func updateTags() {
         guard let sources = tagSources, !sources.isEmpty else { return }
         updateTags(from: sources)
     }
 
-    /// Sets every tag's and citation's value, and every bibliography, from
-    /// `sources`, returning whether anything changed. The Markdown view's
+    /// Sets every variable's and citation's value, and every bibliography,
+    /// from `sources`, returning whether anything changed. The Markdown view's
     /// text is left alone: switching back updates it.
     @discardableResult
     func updateTags(from sources: TagSources) -> Bool {
@@ -50,7 +50,7 @@ extension EditorViewController {
         }
         let rewrote = sources.bibliography.map { rewriteBibliographies($0, hanging: sources.hangingBibliography) } ?? false
         guard !changes.isEmpty || rewrote else { return false }
-        undoManager?.setActionName("Update Tags")
+        undoManager?.setActionName("Update Variables")
         return true
     }
 
@@ -149,43 +149,44 @@ extension EditorViewController {
 
     // MARK: - Inserting
 
-    /// Insert > Tag: asks for the tag's name in a popover at the caret,
-    /// then inserts the tag.
-    @objc func insertTag(_ sender: Any?) {
+    /// Insert > Variable: asks for the variable's name in a popover at the
+    /// caret, then inserts the variable.
+    @objc func insertVariable(_ sender: Any?) {
         guard !isShowingMarkdown, !isPlainText else { return }
-        presentAtCaret(makeTagController())
+        presentAtCaret(makeVariableController())
     }
 
-    func makeTagController() -> TagController {
-        TagController(names: (tagSources?.tags ?? [:]).keys.sorted { $0.localizedStandardCompare($1) == .orderedAscending }) {
-            [weak self] name in self?.insertTag(named: name)
+    func makeVariableController() -> VariableController {
+        VariableController(names: (tagSources?.variables ?? [:]).keys.sorted { $0.localizedStandardCompare($1) == .orderedAscending }) {
+            [weak self] name in self?.insertVariable(named: name)
         }
     }
 
-    /// Inserts the tag `name` at the selection, as if its Markdown had been
-    /// typed.
-    func insertTag(named name: String) {
+    /// Inserts the variable `name` at the selection, as if its Markdown had
+    /// been typed.
+    func insertVariable(named name: String) {
         guard MarkupTag.isValid(name: name) else { return }
-        let tag = MarkupTag(name: name, value: MarkupTag.unknownValue).updated(from: tagSources ?? TagSources())
-        textView.insertText(tag.markdown, replacementRange: textView.selectedRange())
-        undoManager?.setActionName("Insert Tag")
+        let variable = MarkupTag(name: name, value: MarkupTag.unknownValue).updated(from: tagSources ?? TagSources())
+        textView.insertText(variable.markdown, replacementRange: textView.selectedRange())
+        undoManager?.setActionName("Insert Variable")
         view.window?.makeFirstResponder(textView)
     }
 
-    // MARK: - Typed tags
+    // MARK: - Typed variables and citations
 
-    private static let quickTag = try! NSRegularExpression(pattern: #"(?<![\p{L}\p{N}_.@\-])@([\p{L}\p{N}_.\-]+)@"#)
+    private static let quickVariable = try! NSRegularExpression(pattern: #"(?<![\p{L}\p{N}_.@\-])@([\p{L}\p{N}_.\-]+)@"#)
 
-    /// Replaces typed or pasted tags and citations that the edit touched,
-    /// and with the quick tags setting, `@name@`, with the tag. Its value is
+    /// Replaces typed or pasted variables and citations that the edit
+    /// touched, and with the quick variables setting, `@name@`, with the
+    /// variable. Its value is
     /// set from the project's files, if there are any.
     func convertTags(in line: NSRange, after edit: NSRange) {
         let contents = contentsRange(of: line)
         let string = storage.string as NSString
         let text = string.substring(with: contents)
         var found = MarkupTag.tags(in: text).map { (range: NSRange(location: $0.range.lowerBound, length: $0.range.count), tag: $0.tag) }
-        if settings.quickTags {
-            for match in Self.quickTag.matches(in: text, range: NSRange(location: 0, length: contents.length))
+        if settings.quickVariables {
+            for match in Self.quickVariable.matches(in: text, range: NSRange(location: 0, length: contents.length))
             where !found.contains(where: { NSIntersectionRange($0.range, match.range).length > 0 }) {
                 let name = (text as NSString).substring(with: match.range(at: 1))
                 found.append((match.range, MarkupTag(name: name, value: MarkupTag.unknownValue)))
@@ -213,9 +214,9 @@ extension EditorViewController {
     }
 }
 
-/// The tag popover: "Tag:" with a combo box offering the names in
-/// `tags.txt` (any other name can be typed), and an Insert button.
-final class TagController: NSViewController, NSComboBoxDelegate {
+/// The variable popover: "Variable:" with a combo box offering the names in
+/// `variables.txt` (any other name can be typed), and an Insert button.
+final class VariableController: NSViewController, NSComboBoxDelegate {
     let comboBox = NSComboBox()
     let insertButton = NSButton(title: "Insert", target: nil, action: nil)
     private let names: [String]
@@ -235,14 +236,14 @@ final class TagController: NSViewController, NSComboBoxDelegate {
         comboBox.addItems(withObjectValues: names)
         comboBox.completes = true
         comboBox.numberOfVisibleItems = 12
-        comboBox.placeholderString = names.isEmpty ? "No tags.txt" : nil
+        comboBox.placeholderString = names.isEmpty ? "No variables.txt" : nil
         comboBox.widthAnchor.constraint(equalToConstant: 200).isActive = true
 
         insertButton.target = self
         insertButton.action = #selector(insert(_:))
         insertButton.keyEquivalent = "\r"
 
-        let row = NSStackView(views: [NSTextField(labelWithString: "Tag:"), comboBox])
+        let row = NSStackView(views: [NSTextField(labelWithString: "Variable:"), comboBox])
         row.spacing = 6
         let stack = NSStackView(views: [row, insertButton])
         stack.orientation = .vertical
@@ -268,7 +269,7 @@ final class TagController: NSViewController, NSComboBoxDelegate {
         view.window?.makeFirstResponder(comboBox)
     }
 
-    /// The name typed or chosen, if it can be a tag's.
+    /// The name typed or chosen, if it can be a variable's.
     var name: String? {
         let name = comboBox.stringValue.trimmingCharacters(in: .whitespaces)
         return MarkupTag.isValid(name: name) ? name : nil

@@ -3,9 +3,10 @@ import MarkupCore
 import Testing
 @testable import Markup
 
-/// Tags: values from the project's tags.txt, shown as one character each.
+/// Variables: values from the project's variables.txt (or tags.txt), shown
+/// as one character each.
 @MainActor
-@Suite struct TagTests {
+@Suite struct VariableTests {
     let suiteName = "MarkupTests-\(UUID().uuidString)"
     let folder: URL
     let project: ProjectWindowController
@@ -20,10 +21,10 @@ import Testing
 
     init() throws {
         _ = NSApplication.shared
-        folder = FileManager.default.temporaryDirectory.appendingPathComponent("MarkupTagTests-\(UUID().uuidString)")
+        folder = FileManager.default.temporaryDirectory.appendingPathComponent("MarkupVariableTests-\(UUID().uuidString)")
             .resolvingSymlinksInPath()
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        try Data("# Tags\nnoofbakers|2\nname|Signet\n".utf8).write(to: folder.appendingPathComponent("tags.txt"))
+        try Data("# Variables\nnoofbakers|2\nname|Signet\n".utf8).write(to: folder.appendingPathComponent("variables.txt"))
         try Data(Self.this.utf8).write(to: folder.appendingPathComponent("this.md"))
         try Data("By \(Self.tag("name", "Old")).\n```\n\(Self.tag("name", "Old"))\n```\n".utf8)
             .write(to: folder.appendingPathComponent("other.md"))
@@ -55,8 +56,8 @@ import Testing
         }
     }
 
-    private func writeTags(_ text: String) throws {
-        try Data(text.utf8).write(to: folder.appendingPathComponent("tags.txt"))
+    private func writeVariables(_ text: String, to file: String = "variables.txt") throws {
+        try Data(text.utf8).write(to: folder.appendingPathComponent(file))
         step { project.filesChanged() }
     }
 
@@ -70,12 +71,12 @@ import Testing
         return tags
     }
 
-    @Test func aTagIsOneCharacterAndSavesAsWritten() {
+    @Test func aVariableIsOneCharacterAndSavesAsWritten() {
         defer { cleanUp() }
         #expect(textView.string == "We have \u{FFFC} bakers.")
         #expect(tags == [MarkupTag(name: "noofbakers", value: "2")])
         #expect(editor.markdown == Self.this)
-        #expect(textView.textStorage!.attribute(.toolTip, at: 8, effectiveRange: nil) as? String == "Tag noofbakers")
+        #expect(textView.textStorage!.attribute(.toolTip, at: 8, effectiveRange: nil) as? String == "Variable noofbakers")
     }
 
     @Test func showsTheValueInTheLinesFont() throws {
@@ -91,19 +92,19 @@ import Testing
         #expect(abs(frame.width - (ceil(width) + 6)) < 1)
     }
 
-    @Test func valuesFollowTagsFileAsAnEditThatUndoes() throws {
+    @Test func valuesFollowVariablesFileAsAnEditThatUndoes() throws {
         defer { cleanUp() }
-        try writeTags("noofbakers|3\n")
+        try writeVariables("noofbakers|3\n")
         #expect(tags.map(\.value) == ["3"])
         #expect(editor.markdown == "We have \(Self.tag("noofbakers", "3")) bakers.")
         #expect(document.isDocumentEdited)
         document.undoManager?.undo()
         #expect(tags.map(\.value) == ["2"])
 
-        try writeTags("other|1\n")
+        try writeVariables("other|1\n")
         #expect(tags.map(\.value) == [MarkupTag.unknownValue])
         #expect(textView.textStorage!.attribute(.toolTip, at: 8, effectiveRange: nil) as? String
-            == "Tag noofbakers: tags.txt has no value for it")
+            == "Variable noofbakers has no value")
     }
 
     @Test func unchangedValuesAreNotAnEdit() {
@@ -115,8 +116,8 @@ import Testing
     @Test func insertTagUsesTheValueOrQuestionMarks() {
         defer { cleanUp() }
         textView.setSelectedRange(NSRange(location: 0, length: 0))
-        step { editor.insertTag(named: "name") }
-        step { editor.insertTag(named: "missing") }
+        step { editor.insertVariable(named: "name") }
+        step { editor.insertVariable(named: "missing") }
         #expect(tags.map(\.value) == ["Signet", "??", "2"])
         #expect(editor.markdown.hasPrefix(Self.tag("name", "Signet") + Self.tag("missing", "??") + "We have"))
         #expect(textView.selectedRange().location == 2)
@@ -124,10 +125,10 @@ import Testing
         #expect(tags.map(\.value) == ["Signet", "2"])
     }
 
-    @Test func tagPopoverOffersTheTagsAndRefusesBadNames() {
+    @Test func variablePopoverOffersTheVariablesAndRefusesBadNames() {
         defer { cleanUp() }
         var inserted: [String] = []
-        let controller = TagController(names: ["name", "noofbakers"]) { inserted.append($0) }
+        let controller = VariableController(names: ["name", "noofbakers"]) { inserted.append($0) }
         _ = controller.view
         #expect(controller.comboBox.objectValues as? [String] == ["name", "noofbakers"])
         controller.comboBox.stringValue = "two words"
@@ -135,10 +136,10 @@ import Testing
         controller.comboBox.stringValue = " name "
         controller.insert(nil)
         #expect(inserted == ["name"])
-        _ = editor.makeTagController().view
+        _ = editor.makeVariableController().view
     }
 
-    @Test func pastedTagsBecomeTagsWithTheCurrentValue() {
+    @Test func pastedVariablesBecomeVariablesWithTheCurrentValue() {
         defer { cleanUp() }
         editor.load(markdown: "")
         step { textView.insertText("A " + Self.tag("name", "Stale") + " b", replacementRange: textView.selectedRange()) }
@@ -146,13 +147,13 @@ import Testing
         #expect(tags.map(\.value) == ["Signet"])
     }
 
-    @Test func quickTagsNeedTheSetting() {
+    @Test func quickVariablesNeedTheSetting() {
         defer { cleanUp() }
         editor.load(markdown: "")
         type("@name@ ")
         #expect(editor.markdown == "@name@ ")
 
-        settings.quickTags = true
+        settings.quickVariables = true
         editor.load(markdown: "")
         type("By @name@")
         #expect(tags.map(\.name) == ["name"])
@@ -165,7 +166,7 @@ import Testing
         #expect(editor.markdown == "By \(Self.tag("name", "Signet")) and a@b.com or me@x@ ")
     }
 
-    @Test func tagsTakeInlineStylesAndCopyAsMarkdown() {
+    @Test func variablesTakeInlineStylesAndCopyAsMarkdown() {
         defer { cleanUp() }
         editor.load(markdown: "**\(Self.tag("name", "Signet"))** text")
         #expect(textView.textStorage!.isBold(at: 0))
@@ -176,7 +177,7 @@ import Testing
     @Test func theMarkdownViewIsLeftAloneUntilSwitchingBack() throws {
         defer { cleanUp() }
         editor.setShowingMarkdown(true)
-        try writeTags("noofbakers|5\n")
+        try writeVariables("noofbakers|5\n")
         #expect(textView.string == Self.this)
         // Switching clears the undo stack, open group and all, so group by
         // event as the app does.
@@ -186,9 +187,9 @@ import Testing
         #expect(document.undoManager?.canUndo == true)
     }
 
-    @Test func updateTagsInProjectRewritesFilesOnDisk() throws {
+    @Test func updateVariablesInProjectRewritesFilesOnDisk() throws {
         defer { cleanUp() }
-        try writeTags("noofbakers|4\nname|New\n")
+        try writeVariables("noofbakers|4\nname|New\n")
         document.undoManager?.undo()
         let sources = project.tagSources(settings: settings)
         var result: (files: Int, failed: [URL]) = (0, [])
@@ -202,16 +203,27 @@ import Testing
         #expect(project.markdownFiles().first { $0.url.lastPathComponent == "other.md" }?.markdown == other)
     }
 
-    @Test func updateTagsInProjectIsOnlyOfferedWithATagsFile() throws {
+    @Test func updateVariablesInProjectIsOnlyOfferedWithAVariablesFile() throws {
         defer { cleanUp() }
-        let item = NSMenuItem(title: "", action: #selector(ProjectWindowController.updateTagsInProject(_:)), keyEquivalent: "")
+        let item = NSMenuItem(title: "", action: #selector(ProjectWindowController.updateVariablesInProject(_:)), keyEquivalent: "")
         #expect(project.validateMenuItem(item))
-        try FileManager.default.removeItem(at: folder.appendingPathComponent("tags.txt"))
+        try FileManager.default.removeItem(at: folder.appendingPathComponent("variables.txt"))
         project.filesChanged()
         #expect(!project.validateMenuItem(item))
-        // Without a tags file, values are left as they are.
+        // Without a variables file, values are left as they are.
         editor.updateTags()
         #expect(tags.map(\.value) == ["2"])
+    }
+
+    @Test func tagsFileIsReadToo() throws {
+        defer { cleanUp() }
+        try FileManager.default.removeItem(at: folder.appendingPathComponent("variables.txt"))
+        try writeVariables("noofbakers|6\nname|Old\n", to: "tags.txt")
+        #expect(tags.map(\.value) == ["6"])
+        // variables.txt's values come first.
+        try writeVariables("noofbakers|7\n")
+        #expect(tags.map(\.value) == ["7"])
+        #expect(project.variableValues() == ["noofbakers": "7", "name": "Old"])
     }
 
     @Test func aDocumentOutsideAProjectKeepsItsValues() {
@@ -353,7 +365,7 @@ import Testing
         #expect(bibliographyMarkdown.hasPrefix("<!-- MARKUPBIBLIOGRAPHY -->\n**Tezos**\n\n[1]"))
     }
 
-    @Test func updateTagsInProjectRewritesBibliographiesOnDisk() throws {
+    @Test func updateVariablesInProjectRewritesBibliographiesOnDisk() throws {
         defer { cleanUp() }
         let other = folder.appendingPathComponent("other.md")
         try Data("x \(Self.cite("R-1", "[7]"))\n<!-- MARKUPBIBLIOGRAPHY -->\n<!-- ENDMARKUPBIBLIOGRAPHY -->\n".utf8).write(to: other)

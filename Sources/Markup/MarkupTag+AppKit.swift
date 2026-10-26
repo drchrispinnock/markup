@@ -23,12 +23,12 @@ extension MarkupTag {
 
     var toolTip: String {
         switch kind {
-        case .tag: isUnknown ? "Tag \(name): tags.txt has no value for it" : "Tag \(name)"
+        case .variable: isUnknown ? "Variable \(name) has no value" : "Variable \(name)"
         case .citation: isUnknown ? "Citation \(name): bibliography.txt has no entry for it" : "Citation \(name)"
         }
     }
 
-    /// The shading behind a tag's value: blue, or red (as a broken link's)
+    /// The shading behind a variable's or citation's value: blue, or red (as a broken link's)
     /// when it has none.
     @MainActor static let color = NSColor(name: nil) { appearance in
         appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua

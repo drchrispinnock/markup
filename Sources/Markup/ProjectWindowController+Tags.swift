@@ -1,18 +1,19 @@
 import AppKit
 import MarkupCore
 
-/// Tags and citations (`MarkupTag`): values kept in the project folder's
-/// `tags.txt` and `bibliography.txt` and written into its Markdown files,
-/// along with bibliographies. Open documents follow changes to the files
-/// (`EditorViewController.updateTags()`); Update Tags in Project rewrites
-/// the others on disk.
+/// Variables and citations (`MarkupTag`): values kept in the project
+/// folder's `variables.txt` (or `tags.txt`) and `bibliography.txt` and
+/// written into its Markdown files, along with bibliographies. Open
+/// documents follow changes to the files (`EditorViewController.updateTags()`);
+/// Update Variables in Project rewrites the others on disk.
 extension ProjectWindowController {
-    /// The values in the project's `tags.txt`, or nil if there is none.
-    func tagValues() -> [String: String]? {
-        if let read = tagValuesOnDisk { return read }
-        let values = (try? String(contentsOf: root.appendingPathComponent(TagFile.name), encoding: .utf8))
-            .map(TagFile.values(from:))
-        tagValuesOnDisk = .some(values)
+    /// The values in the project's `variables.txt` and `tags.txt`, or nil
+    /// if there is neither.
+    func variableValues() -> [String: String]? {
+        if let read = variableValuesOnDisk { return read }
+        let texts = VariableFile.names.compactMap { try? String(contentsOf: root.appendingPathComponent($0), encoding: .utf8) }
+        let values = texts.isEmpty ? nil : VariableFile.values(fromFiles: texts)
+        variableValuesOnDisk = .some(values)
         return values
     }
 
@@ -25,20 +26,20 @@ extension ProjectWindowController {
         return bibliography
     }
 
-    /// The project's tags and bibliography, written as `settings` says.
+    /// The project's variables and bibliography, written as `settings` says.
     func tagSources(settings: Settings) -> TagSources {
-        TagSources(tags: tagValues(), bibliography: bibliography(), hangingBibliography: settings.hangingBibliography)
+        TagSources(variables: variableValues(), bibliography: bibliography(), hangingBibliography: settings.hangingBibliography)
     }
 
-    /// Insert > Update Tags in Project: sets the tags, citations and
+    /// Insert > Update Variables in Project: sets the variables, citations and
     /// bibliographies in every Markdown file of the project, open documents
     /// as an edit, the others on disk.
-    @objc func updateTagsInProject(_ sender: Any?) {
+    @objc func updateVariablesInProject(_ sender: Any?) {
         let sources = tagSources(settings: .shared)
         guard !sources.isEmpty else { return }
         let (files, failed) = updateTags(from: sources)
         let alert = NSAlert()
-        alert.messageText = files == 1 ? "Updated tags in 1 file." : "Updated tags in \(files) files."
+        alert.messageText = files == 1 ? "Updated variables in 1 file." : "Updated variables in \(files) files."
         if !failed.isEmpty {
             alert.alertStyle = .warning
             alert.informativeText = "Couldn't save " + failed.map(\.lastPathComponent).joined(separator: ", ") + "."
@@ -46,7 +47,7 @@ extension ProjectWindowController {
         alert.beginSheetModal(for: window!)
     }
 
-    /// Sets the tags in the project's files from `sources`, returning how
+    /// Sets the variables and citations in the project's files from `sources`, returning how
     /// many files changed and those that couldn't be saved.
     func updateTags(from sources: TagSources) -> (files: Int, failed: [URL]) {
         var files = 0
@@ -72,6 +73,6 @@ extension ProjectWindowController {
 
 extension ProjectWindowController: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        menuItem.action == #selector(updateTagsInProject(_:)) ? !tagSources(settings: .shared).isEmpty : true
+        menuItem.action == #selector(updateVariablesInProject(_:)) ? !tagSources(settings: .shared).isEmpty : true
     }
 }
