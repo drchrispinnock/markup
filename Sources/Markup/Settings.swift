@@ -8,6 +8,7 @@ final class Settings {
 
     static let imagesDirectoryKey = "MarkupImagesDirectory"
     static let openProjectsKey = "MarkupOpenProjects"
+    static let openDocumentsKey = "MarkupOpenDocuments"
     static let recentProjectsKey = "MarkupRecentProjects"
     static let centersImagesKey = "MarkupCentersImages"
     static let addsHeadingIDsKey = "MarkupAddsHeadingIDs"
@@ -135,6 +136,13 @@ final class Settings {
                 ["folder": project.folder.path, "file": project.file?.path].compactMapValues { $0 }
             }, forKey: Self.openProjectsKey)
         }
+    }
+
+    /// The files open in windows of their own when the app last quit, to
+    /// open again at launch, the frontmost first.
+    var openDocuments: [URL] {
+        get { (defaults.stringArray(forKey: Self.openDocumentsKey) ?? []).map { URL(fileURLWithPath: $0) } }
+        set { defaults.set(newValue.map(\.path), forKey: Self.openDocumentsKey) }
     }
 
     /// The most projects File > Open Recent lists.

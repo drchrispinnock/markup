@@ -39,7 +39,12 @@ final class MarkdownDocument: NSDocument {
     }
 
     override func makeWindowControllers() {
-        addWindowController(DocumentWindowController(editor: editor))
+        let controller = DocumentWindowController(editor: editor)
+        // A file's window opens where it was last, as when reopened at launch.
+        if let fileURL {
+            controller.window?.setFrameAutosaveName("MarkupDocument \(fileURL.path)")
+        }
+        addWindowController(controller)
     }
 
     /// A document shown in a project window is shown there, not given a

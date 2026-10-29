@@ -2126,6 +2126,30 @@ import Testing
         launching.projects.forEach { $0.window?.close() }
     }
 
+    @Test func filesInWindowsOfTheirOwnAreRememberedAtQuit() throws {
+        let own = try document("a.md")
+        own.makeWindowControllers()
+        let inProject = try document("notes/c.markdown")
+        let untitled = MarkdownDocument()
+        untitled.makeWindowControllers()
+        let delegate = AppDelegate()
+        let projectWindow = delegate.openProject(at: folder)
+        projectWindow.show(inProject)
+        let windows = [own, untitled].compactMap { $0.windowControllers.first?.window } + [projectWindow.window!]
+        #expect(AppDelegate.windowedFiles(in: windows) == [own.fileURL!])
+        #expect(own.windowControllers.first?.window?.frameAutosaveName == "MarkupDocument \(own.fileURL!.path)")
+        windows.forEach { $0.close() }
+
+        let settings = Settings(defaults: UserDefaults(suiteName: "MarkupTests-\(UUID().uuidString)")!)
+        let launching = AppDelegate()
+        launching.settings = settings
+        settings.openDocuments = [folder.appendingPathComponent("gone.md")]
+        #expect(launching.applicationShouldOpenUntitledFile(NSApp))
+        launching.reopenDocuments()
+        settings.openDocuments = [own.fileURL!]
+        #expect(!launching.applicationShouldOpenUntitledFile(NSApp))
+    }
+
     @Test func projectsWithNoFileShownReopenWithNone() throws {
         let settings = Settings(defaults: UserDefaults(suiteName: "MarkupTests-\(UUID().uuidString)")!)
         settings.openProjects = [Settings.OpenProject(folder: folder, file: folder.appendingPathComponent("gone.md"))]

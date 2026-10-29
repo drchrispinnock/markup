@@ -3,7 +3,9 @@ import AppKit
 /// Windows are created by `NSDocumentController`, which opens an untitled
 /// document at launch and when the Dock icon is clicked with no windows open.
 /// The project windows open at quit are opened again at launch, showing the
-/// files they showed, instead of the untitled document.
+/// files they showed, and so are the files open in windows of their own,
+/// instead of the untitled document. macOS would restore the windows itself
+/// only with "Close windows when quitting an application" turned off.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Where the open projects are remembered.
@@ -13,17 +15,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.mainMenu = MainMenu.make()
         DevelopmentIcon.install()
         reopenProjects()
+        reopenDocuments()
         NSApp.activate()
     }
 
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
         projects.isEmpty && !settings.openProjects.contains { Self.exists($0.folder, isFolder: true) }
+            && !settings.openDocuments.contains { Self.exists($0, isFolder: false) }
     }
 
     // Quitting leaves windows open rather than closing them, so the project
     // windows are all still here.
     func applicationWillTerminate(_ notification: Notification) {
         settings.openProjects = projects.map { Settings.OpenProject(folder: $0.root, file: $0.currentDocument?.fileURL) }
+        settings.openDocuments = Self.windowedFiles(in: NSApp.orderedWindows)
+    }
+
+    /// The files shown in windows of their own among `windows`, in their
+    /// order. Untitled documents and those in project windows aren't.
+    static func windowedFiles(in windows: [NSWindow]) -> [URL] {
+        windows.compactMap { window in
+            guard window.windowController is DocumentWindowController else { return nil }
+            return (window.windowController?.document as? NSDocument)?.fileURL
+        }
+    }
+
+    /// Opens the files that were open in windows of their own at quit,
+    /// skipping files that have gone. The frontmost is opened last, so it
+    /// ends up in front.
+    func reopenDocuments() {
+        for file in settings.openDocuments.reversed() where Self.exists(file, isFolder: false) {
+            NSDocumentController.shared.openDocument(withContentsOf: file, display: true) { _, _, _ in }
+        }
     }
 
     /// Opens the projects that were open at quit, with the files they showed,
