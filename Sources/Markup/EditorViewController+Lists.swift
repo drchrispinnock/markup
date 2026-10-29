@@ -82,6 +82,33 @@ extension EditorViewController {
         return true
     }
 
+    /// After lines are pasted into list item `item` from `start` to the
+    /// caret, makes each line after the first another item like it, as if
+    /// Return had been pressed between them, so three lines pasted on a
+    /// bullet are three bullets. The line the caret ends on is one of them,
+    /// holding the text that was after the caret. Lines the paste's
+    /// Markdown made items or headings already are left as they are.
+    func continueList(_ item: ListItem, overLinesPastedFrom start: Int) {
+        let end = textView.selectedRange().location
+        guard end > start else { return }
+        var lines = lineRanges(in: NSRange(location: start, length: end - start))
+        // A paste ending in a newline ends on the line after the lines it
+        // touched.
+        if (storage.string as NSString).character(at: end - 1) == 0x0A {
+            lines.append(lineRange(at: end))
+        }
+        let next = ListItem(level: item.level, marker: item.marker == .checked ? .unchecked : item.marker)
+        var added = 0
+        // From the bottom, so the lines above keep their places.
+        for line in lines.dropFirst().reversed() {
+            guard listItem(at: line) == nil,
+                  line.length == 0 || storage.blockStyle(at: line.location) == .paragraph else { continue }
+            replaceCharacters(in: NSRange(location: line.location, length: 0), with: next.markerString)
+            added += 1
+        }
+        textView.setSelectedRange(NSRange(location: end + added, length: 0))
+    }
+
     /// Tab and Shift-Tab indent and outdent the selected list items. Returns
     /// false, so that Tab is typed as usual, when no list item is selected.
     func changeListLevel(by delta: Int) -> Bool {

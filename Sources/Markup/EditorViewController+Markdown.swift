@@ -232,6 +232,24 @@ extension EditorViewController {
         return InlineMarkdown.markdown(for: spans)
     }
 
+    /// Pastes `text` from the pasteboard: fenced code blocks as code lines,
+    /// and anything else as if typed, so the shortcuts convert its Markdown.
+    /// Lines pasted into a list item become items like it.
+    /// NSTextView's own paste would give the text the attributes of the
+    /// character before the caret, which in an empty list item is its
+    /// marker, so the text would be removed as stray markers. False in the
+    /// Markdown view, where NSTextView pastes.
+    func paste(_ text: String) -> Bool {
+        guard !isShowingMarkdown, !isPlainText else { return false }
+        if pasteCodeBlocks(text) { return true }
+        let start = textView.selectedRange().location
+        let item = listItem(at: lineRange(at: start))
+        textView.insertText(text, replacementRange: textView.selectedRange())
+        if let item, text.contains("\n") { continueList(item, overLinesPastedFrom: start) }
+        undoManager?.setActionName("Paste")
+        return true
+    }
+
     /// The text of `range` for the pasteboard, with each list marker, image
     /// and inline style written as its Markdown, so pasting the text back
     /// recreates them. A table the range goes beyond one cell of is written

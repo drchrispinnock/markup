@@ -321,6 +321,66 @@ import Testing
         #expect(!textView.string.contains("-"))
     }
 
+    private func paste(_ text: String) {
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("MarkupTests-\(UUID())"))
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        step { _ = textView.readSelection(from: pasteboard) }
+        pasteboard.releaseGlobally()
+    }
+
+    @Test func plainTextPastesIntoAnEmptyListItem() {
+        for markdown in ["- one", "1. one", "- [ ] one"] {
+            editor.load(markdown: markdown)
+            select(textView.string.utf16.count)
+            press(#selector(NSResponder.insertNewline(_:)))
+            paste("pasted")
+            #expect(editor.markdown == markdown + "\n" + markdown.replacingOccurrences(of: "one", with: "pasted")
+                .replacingOccurrences(of: "1. pasted", with: "2. pasted"))
+            #expect(textView.selectedRange() == NSRange(location: textView.string.utf16.count, length: 0))
+        }
+        editor.load(markdown: "- one")
+        select(4)
+        paste("**two**")
+        #expect(editor.markdown == "- one**two**")
+    }
+
+    @Test func linesPastedIntoAListItemBecomeItems() {
+        editor.load(markdown: "Fish:\n- ")
+        select(textView.string.utf16.count)
+        paste("Cod\nHaddock\nPlaice")
+        #expect(editor.markdown == "Fish:\n- Cod\n- Haddock\n- Plaice")
+        #expect(textView.selectedRange() == NSRange(location: textView.string.utf16.count, length: 0))
+        document.undoManager?.undo()
+        #expect(editor.markdown == "Fish:\n- ")
+
+        // Same kind and level; text after the caret goes on the last line.
+        editor.load(markdown: "- a\n  1. one two")
+        select(8)
+        paste("X\nY\n")
+        #expect(editor.markdown == "- a\n  1. one X\n  2. Y\n  3. two")
+        #expect(editor.listItem(at: editor.lineRange(at: textView.selectedRange().location))?.marker == .numbered)
+        #expect(textView.selectedRange().location == editor.lineRange(at: textView.selectedRange().location).location + 1)
+
+        // A ticked item's new items start unticked.
+        editor.load(markdown: "- [x] done")
+        select(textView.string.utf16.count)
+        paste("\nnext")
+        #expect(editor.markdown == "- [x] done\n- [ ] next")
+
+        // Lines that are Markdown keep what they say.
+        editor.load(markdown: "- a")
+        select(textView.string.utf16.count)
+        paste("\n# Title\n- [ ] task\nplain")
+        #expect(editor.markdown == "- a\n# Title\n- [ ] task\n- plain")
+
+        // Not in a list, lines stay paragraphs.
+        editor.load(markdown: "Intro")
+        select(5)
+        paste("\nCod\nHaddock")
+        #expect(editor.markdown == "Intro\nCod\nHaddock")
+    }
+
     @Test func copyingWritesListsAsMarkdown() {
         editor.load(markdown: "Intro\n- a\n  - [ ] b")
         select(0, textView.string.utf16.count)
