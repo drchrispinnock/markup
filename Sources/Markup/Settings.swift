@@ -8,6 +8,7 @@ final class Settings {
 
     static let imagesDirectoryKey = "MarkupImagesDirectory"
     static let openProjectsKey = "MarkupOpenProjects"
+    static let recentProjectsKey = "MarkupRecentProjects"
     static let addsHeadingIDsKey = "MarkupAddsHeadingIDs"
     static let headingIDFormKey = "MarkupHeadingIDForm"
     static let headingIDSchemeKey = "MarkupHeadingIDScheme"
@@ -122,6 +123,24 @@ final class Settings {
                 ["folder": project.folder.path, "file": project.file?.path].compactMapValues { $0 }
             }, forKey: Self.openProjectsKey)
         }
+    }
+
+    /// The most projects File > Open Recent lists.
+    static let recentProjectsLimit = 10
+
+    /// The project folders opened lately, most recent first, for File > Open
+    /// Recent.
+    var recentProjects: [URL] {
+        get {
+            (defaults.stringArray(forKey: Self.recentProjectsKey) ?? []).map { URL(fileURLWithPath: $0, isDirectory: true) }
+        }
+        set { defaults.set(newValue.prefix(Self.recentProjectsLimit).map(\.path), forKey: Self.recentProjectsKey) }
+    }
+
+    /// Puts `folder` first among the recent projects.
+    func noteRecentProject(_ folder: URL) {
+        let folder = folder.standardizedFileURL
+        recentProjects = [folder] + recentProjects.filter { $0.standardizedFileURL != folder }
     }
 
     /// The folders an image's path is looked up in, in order: the images

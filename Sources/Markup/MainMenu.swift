@@ -27,6 +27,11 @@ enum MainMenu {
         let fileMenu = NSMenu(title: "File")
         fileMenu.addItem(withTitle: "New", action: #selector(NSDocumentController.newDocument(_:)), keyEquivalent: "n")
         fileMenu.addItem(withTitle: "Open…", action: #selector(NSDocumentController.openDocument(_:)), keyEquivalent: "o")
+        let recentMenu = NSMenu(title: "Open Recent")
+        // AppDelegate fills it each time it opens, with recent files and projects.
+        recentMenu.delegate = NSApp.delegate as? NSMenuDelegate
+        recentMenu.autoenablesItems = false
+        fileMenu.addItem(submenu: recentMenu, title: "Open Recent")
         fileMenu.addItem(withTitle: "Open Project…", action: #selector(AppDelegate.openProject(_:)), keyEquivalent: "O")
         fileMenu.addItem(.separator())
         fileMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")

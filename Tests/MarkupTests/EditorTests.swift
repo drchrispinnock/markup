@@ -2060,6 +2060,52 @@ import Testing
         #expect(delegate.projects.isEmpty)
     }
 
+    @Test func openRecentListsProjectsOpenedMostRecentFirst() throws {
+        let settings = Settings(defaults: UserDefaults(suiteName: "MarkupTests-\(UUID().uuidString)")!)
+        let delegate = AppDelegate()
+        delegate.settings = settings
+        let notes = folder.appendingPathComponent("notes", isDirectory: true)
+        delegate.openProject(at: folder)
+        delegate.openProject(at: notes)
+        delegate.openProject(at: folder)
+        delegate.projects.forEach { $0.window?.close() }
+        #expect(settings.recentProjects == [folder.standardizedFileURL, notes.standardizedFileURL])
+
+        // A folder that has gone isn't listed.
+        settings.recentProjects += [folder.appendingPathComponent("gone", isDirectory: true)]
+        let menu = NSMenu()
+        delegate.menuNeedsUpdate(menu)
+        let projectItems = menu.items.filter { $0.action == #selector(AppDelegate.openRecentProject(_:)) }
+        #expect(projectItems.map { $0.representedObject as? URL } == [folder.standardizedFileURL, notes.standardizedFileURL])
+
+        // Each shows the folder it is in.
+        #expect(projectItems[1].attributedTitle?.string
+            == "notes  " + AppDelegate.recentLocation(of: notes))
+
+        delegate.openRecentProject(projectItems[1])
+        #expect(delegate.projects.map(\.root) == [notes.standardizedFileURL])
+        #expect(settings.recentProjects.first == notes.standardizedFileURL)
+        delegate.projects.forEach { $0.window?.close() }
+
+        delegate.clearRecent(nil)
+        #expect(settings.recentProjects.isEmpty)
+    }
+
+    @Test func openRecentShowsWhereEachIsFromHome() {
+        let home = "/Users/someone"
+        #expect(AppDelegate.recentLocation(of: URL(fileURLWithPath: "/Users/someone/Books/rust/manuscript"), home: home)
+            == "~/Books/rust")
+        #expect(AppDelegate.recentLocation(of: URL(fileURLWithPath: "/Volumes/Disk/manuscript"), home: home)
+            == "/Volumes/Disk")
+        #expect(AppDelegate.recentLocation(of: URL(fileURLWithPath: "/Users/someoneelse/a.md"), home: home)
+            == "/Users/someoneelse")
+        let long = URL(fileURLWithPath: "/Users/someone/Documents/Writing/Leanpub/Books/2026/a-very-long-book-name/manuscript")
+        let location = AppDelegate.recentLocation(of: long, home: home, maxLength: 30)
+        #expect(location.count == 30)
+        #expect(location.hasPrefix("~/Docu"))
+        #expect(location.hasSuffix("long-book-name"))
+    }
+
     @Test func closingWithNoUnsavedChangesClosesTheDocuments() throws {
         let a = try document("a.md")
         project.show(a)

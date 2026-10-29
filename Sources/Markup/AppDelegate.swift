@@ -78,6 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// open for it.
     @discardableResult
     func openProject(at folder: URL) -> ProjectWindowController {
+        settings.noteRecentProject(folder)
         if let open = projects.first(where: { $0.root == folder.standardizedFileURL }) {
             open.showWindow(nil)
             return open
