@@ -47,6 +47,7 @@ enum MainMenu {
         editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editMenu.addItem(.separator())
         editMenu.addItem(submenu: findMenu(), title: "Find")
+        editMenu.addItem(withTitle: "Go To Line…", action: #selector(EditorViewController.showGoToLine(_:)), keyEquivalent: "l")
         editMenu.addItem(submenu: spellingMenu(), title: "Spelling and Grammar")
         mainMenu.addItem(submenu: editMenu, title: "Edit")
 
@@ -88,6 +89,8 @@ enum MainMenu {
         viewMenu.addItem(.separator())
         viewMenu.addItem(withTitle: "Show Markdown",
                          action: #selector(EditorViewController.toggleMarkdown(_:)), keyEquivalent: "M")
+        viewMenu.addItem(withTitle: "Show Line Numbers",
+                         action: #selector(EditorViewController.toggleLineNumbers(_:)), keyEquivalent: "L")
         viewMenu.addItem(withTitle: "Reload Images",
                          action: #selector(EditorViewController.reloadImages(_:)), keyEquivalent: "R")
         mainMenu.addItem(submenu: viewMenu, title: "View")

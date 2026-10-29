@@ -83,7 +83,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     var typingStyles: (location: Int, styles: Set<InlineStyle>)?
 
     /// Where the images directory comes from.
-    var settings = Settings.shared
+    var settings = Settings.shared {
+        didSet { updateLineNumbers() }
+    }
 
     /// The document being edited. It owns this controller.
     weak var document: MarkdownDocument?
@@ -258,6 +260,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         view = contentView
         NotificationCenter.default.addObserver(self, selector: #selector(projectFilesChanged(_:)),
                                                name: .markupProjectFilesChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(showsLineNumbersChanged(_:)),
+                                               name: .markupShowsLineNumbersChanged, object: nil)
+        updateLineNumbers()
         textView.delegate = self
         storage.delegate = self
         textView.markerClickHandler = { [unowned self] index in toggleCheckbox(at: index) }
@@ -282,6 +287,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         // variables.txt may have changed.
         updateTags()
         scheduleLinkCheck(afterEdit: false)
+    }
+
+    @objc private func showsLineNumbersChanged(_ notification: Notification) {
+        updateLineNumbers()
     }
 
     /// The text view uses TextKit 1, whose layout manager can locate list
@@ -324,6 +333,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         textView.textContainerInset = NSSize(width: 24, height: 24)
 
         scrollView.documentView = textView
+        scrollView.verticalRulerView = LineNumberRulerView(textView: textView)
         return scrollView
     }
 

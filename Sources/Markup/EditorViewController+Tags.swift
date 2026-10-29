@@ -138,7 +138,7 @@ extension EditorViewController {
     }
 
     /// Shows `controller` in a popover below the caret.
-    private func presentAtCaret(_ controller: NSViewController) {
+    func presentAtCaret(_ controller: NSViewController) {
         textView.layoutManager?.ensureLayout(for: textView.textContainer!)
         let caret = textView.selectedRange()
         var rect = textView.firstRect(forCharacterRange: NSRange(location: caret.location, length: 0), actualRange: nil)

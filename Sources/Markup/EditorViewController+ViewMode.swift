@@ -22,6 +22,20 @@ extension EditorViewController {
         setShowingMarkdown(!isShowingMarkdown)
     }
 
+    /// View > Show Line Numbers, for every editor.
+    @objc func toggleLineNumbers(_ sender: Any?) {
+        settings.showsLineNumbers.toggle()
+    }
+
+    /// The Markdown view's line numbers are shown while the setting is on.
+    func updateLineNumbers() {
+        guard let scrollView = textView.enclosingScrollView else { return }
+        let shows = isShowingMarkdown && settings.showsLineNumbers
+        scrollView.hasVerticalRuler = shows
+        scrollView.rulersVisible = shows
+        (scrollView.verticalRulerView as? LineNumberRulerView)?.updateThickness()
+    }
+
     func setShowingMarkdown(_ showMarkdown: Bool) {
         guard showMarkdown != isShowingMarkdown, !isPlainText else { return }
         let caret = caretPosition()
@@ -36,6 +50,7 @@ extension EditorViewController {
             load(markdown: markdown)
         }
         updateFrontMatterBadge()
+        updateLineNumbers()
         // Undo steps refer to places in the text as the other view laid it
         // out, so they can't be replayed here. Clearing them doesn't change
         // whether the document has unsaved changes.
@@ -82,27 +97,33 @@ extension EditorViewController {
     }
 
     private func moveCaret(to position: (line: Int, fromEnd: Int)) {
-        let string = storage.string as NSString
-        var location = 0
-        if isShowingMarkdown {
-            for _ in 0..<position.line {
-                let newline = string.range(of: "\n", range: NSRange(location: location, length: string.length - location))
-                guard newline.location != NSNotFound else { break }
-                location = NSMaxRange(newline)
-            }
-        } else {
-            // The first line showing that Markdown line, or for a table's
-            // delimiter row, the header.
-            let lines = markdownLineNumbers()
-            let markdownLine = position.line - frontMatterLineCount
-            let line = lines.last { $0.markdownLine <= markdownLine }?.markdownLine
-            location = lines.first { $0.markdownLine == line }?.line.location ?? 0
-        }
+        let location = textLocation(ofMarkdownLine: position.line)
         let contents = contentsRange(of: lineRange(at: location))
         let caret = isTableLine(lineRange(at: location)) ? contents.location
             : max(contents.location, NSMaxRange(contents) - min(position.fromEnd, contents.length))
         textView.setSelectedRange(NSRange(location: caret, length: 0))
         textView.scrollRangeToVisible(textView.selectedRange())
+    }
+
+    /// The start of the text showing Markdown line `markdownLine` (from 0,
+    /// counting front matter), or of the last line if there are fewer. In
+    /// the formatted view that is the first line showing it: for a table's
+    /// delimiter row, the header, and for front matter, the start.
+    func textLocation(ofMarkdownLine markdownLine: Int) -> Int {
+        guard !isShowingMarkdown else {
+            let string = storage.string as NSString
+            var location = 0
+            for _ in 0..<max(markdownLine, 0) {
+                let newline = string.range(of: "\n", range: NSRange(location: location, length: string.length - location))
+                guard newline.location != NSNotFound else { break }
+                location = NSMaxRange(newline)
+            }
+            return location
+        }
+        let lines = markdownLineNumbers()
+        let markdownLine = markdownLine - frontMatterLineCount
+        let line = lines.last { $0.markdownLine <= markdownLine }?.markdownLine
+        return lines.first { $0.markdownLine == line }?.line.location ?? 0
     }
 
     /// Each line of the formatted text, with the number of the Markdown line
@@ -151,6 +172,9 @@ extension EditorViewController: NSMenuItemValidation {
         case #selector(toggleMarkdown(_:)):
             menuItem.state = isShowingMarkdown ? .on : .off
             return !isPlainText
+        case #selector(toggleLineNumbers(_:)):
+            menuItem.state = settings.showsLineNumbers ? .on : .off
+            return true
         case #selector(reloadImages(_:)):
             return !isShowingMarkdown
         case #selector(toggleBold(_:)):

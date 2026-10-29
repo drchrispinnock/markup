@@ -15,6 +15,7 @@ final class Settings {
     // Named when variables were called tags, so the setting is kept.
     static let quickVariablesKey = "MarkupQuickTags"
     static let hangingBibliographyKey = "MarkupHangingBibliography"
+    static let showsLineNumbersKey = "MarkupShowsLineNumbers"
 
     let defaults: UserDefaults
 
@@ -86,6 +87,17 @@ final class Settings {
         set { defaults.set(newValue, forKey: Self.hangingBibliographyKey) }
     }
 
+    /// Whether the Markdown view numbers its lines. Off unless turned on.
+    /// Posts `.markupShowsLineNumbersChanged` when set, so every editor
+    /// follows.
+    var showsLineNumbers: Bool {
+        get { defaults.bool(forKey: Self.showsLineNumbersKey) }
+        set {
+            defaults.set(newValue, forKey: Self.showsLineNumbersKey)
+            NotificationCenter.default.post(name: .markupShowsLineNumbersChanged, object: self)
+        }
+    }
+
     /// A project window open when the app last quit: its folder, and the
     /// file it showed, if any.
     struct OpenProject: Equatable {
@@ -121,4 +133,9 @@ final class Settings {
         return [imagesDirectory, folder, folder?.appendingPathComponent("resources", isDirectory: true),
                 folder?.appendingPathComponent("images", isDirectory: true), folder?.deletingLastPathComponent()].compactMap { $0 }
     }
+}
+
+extension Notification.Name {
+    /// Posted by `Settings` when `showsLineNumbers` changes.
+    static let markupShowsLineNumbersChanged = Notification.Name("MarkupShowsLineNumbersChanged")
 }
