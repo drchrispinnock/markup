@@ -269,6 +269,10 @@ final class VariableController: NSViewController, NSComboBoxDelegate {
         view.window?.makeFirstResponder(comboBox)
     }
 
+    /// Says a name can't be a variable's. Tests replace it, so they don't
+    /// beep.
+    var beep: () -> Void = { NSSound.beep() }
+
     /// The name typed or chosen, if it can be a variable's.
     var name: String? {
         let name = comboBox.stringValue.trimmingCharacters(in: .whitespaces)
@@ -277,7 +281,7 @@ final class VariableController: NSViewController, NSComboBoxDelegate {
 
     @objc func insert(_ sender: Any?) {
         guard let name else {
-            NSSound.beep()
+            beep()
             return
         }
         dismiss(nil)

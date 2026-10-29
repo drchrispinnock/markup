@@ -129,6 +129,8 @@ import Testing
         defer { cleanUp() }
         var inserted: [String] = []
         let controller = VariableController(names: ["name", "noofbakers"]) { inserted.append($0) }
+        var beeps = 0
+        controller.beep = { beeps += 1 }
         _ = controller.view
         #expect(controller.comboBox.objectValues as? [String] == ["name", "noofbakers"])
         controller.comboBox.stringValue = "two words"
@@ -136,6 +138,7 @@ import Testing
         controller.comboBox.stringValue = " name "
         controller.insert(nil)
         #expect(inserted == ["name"])
+        #expect(beeps == 1)
         _ = editor.makeVariableController().view
     }
 

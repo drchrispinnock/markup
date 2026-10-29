@@ -40,6 +40,8 @@ final class GoToLineController: NSViewController {
     let goButton = NSButton(title: "Go", target: nil, action: nil)
     let lineCount: Int
     private let onGo: (Int) -> Void
+    /// Says a number isn't a line. Tests replace it, so they don't beep.
+    var beep: () -> Void = { NSSound.beep() }
 
     init(lineCount: Int, onGo: @escaping (Int) -> Void) {
         self.lineCount = max(lineCount, 1)
@@ -91,7 +93,7 @@ final class GoToLineController: NSViewController {
     @objc func go(_ sender: Any?) {
         guard let number = Int((field.currentEditor()?.string ?? field.stringValue)
             .trimmingCharacters(in: .whitespaces)), number > 0 else {
-            NSSound.beep()
+            beep()
             return
         }
         if presentingViewController != nil { dismiss(self) }

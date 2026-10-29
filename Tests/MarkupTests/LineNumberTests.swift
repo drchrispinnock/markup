@@ -99,6 +99,8 @@ import Testing
     @Test func popoverGoesToTheNumberTyped() {
         var chosen: [Int] = []
         let controller = GoToLineController(lineCount: 13) { chosen.append($0) }
+        var beeps = 0
+        controller.beep = { beeps += 1 }
         _ = controller.view
         controller.field.stringValue = "5"
         controller.go(nil)
@@ -107,5 +109,6 @@ import Testing
         controller.field.stringValue = "0"
         controller.go(nil)
         #expect(chosen == [5, 13])
+        #expect(beeps == 1)
     }
 }
