@@ -1125,6 +1125,35 @@ import Testing
                                       glyphPosition: .zero, characterIndex: 2).width <= 500)
     }
 
+    @Test func anImageAloneOnItsLineIsCentredUnlessTheSettingIsOff() throws {
+        defer { cleanUp() }
+        #expect(editor.settings.centersImages)
+        try Self.writePNG(width: 100, height: 50, to: imagesDirectory.appendingPathComponent("cats/kit.png"))
+        editor.load(markdown: "![](cats/kit.png)\n<!-- c --> ![](cats/kit.png)<br>\nSee ![](cats/kit.png)\n\n"
+            + "| ![](cats/kit.png) |\n| --- |\n| x |")
+        let container = textView.textContainer!
+        let line = NSRect(x: 0, y: 0, width: 500, height: 20)
+        func width(at index: Int, x: CGFloat = 0) throws -> CGFloat {
+            try #require(cell(at: index)).cellFrame(for: container, proposedLineFragment: line,
+                                                    glyphPosition: NSPoint(x: x, y: 0), characterIndex: index).width
+        }
+        let padding = container.lineFragmentPadding
+        // The cell takes the rest of the line; the image is drawn in its middle.
+        #expect(try width(at: 0, x: padding) == floor(500 - 2 * padding - 1))
+        // Hidden comments and tags and spaces don't count.
+        #expect(storage.string.hasPrefix("\u{FFFC}\n\u{FFFC} \u{FFFC}\u{FFFC}\n"))
+        #expect(try width(at: 4, x: padding) > 100)
+        // Text beside it, or a table cell, keeps it where it is.
+        #expect(try width(at: 11) == 100)
+        let tableImage = try #require((0..<storage.length).last { cell(at: $0) != nil })
+        #expect(storage.blockStyle(at: tableImage) == .table)
+        #expect(try width(at: tableImage) == 100)
+
+        editor.settings.centersImages = false
+        #expect(try width(at: 0, x: padding) == 100)
+        #expect(Settings(defaults: editor.settings.defaults).centersImages == false)
+    }
+
     @Test func typedImageMarkdownBecomesTheImage() {
         defer { cleanUp() }
         type("See ![a cat](cats/tom.png")

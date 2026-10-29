@@ -84,7 +84,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
 
     /// Where the images directory comes from.
     var settings = Settings.shared {
-        didSet { updateLineNumbers() }
+        didSet {
+            centersImagesChanged(nil)
+            updateLineNumbers()
+        }
     }
 
     /// The document being edited. It owns this controller.
@@ -260,6 +263,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         view = contentView
         NotificationCenter.default.addObserver(self, selector: #selector(projectFilesChanged(_:)),
                                                name: .markupProjectFilesChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(centersImagesChanged(_:)),
+                                               name: .markupCentersImagesChanged, object: nil)
+        centersImagesChanged(nil)
         NotificationCenter.default.addObserver(self, selector: #selector(showsLineNumbersChanged(_:)),
                                                name: .markupShowsLineNumbersChanged, object: nil)
         updateLineNumbers()
@@ -287,6 +293,15 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         // variables.txt may have changed.
         updateTags()
         scheduleLinkCheck(afterEdit: false)
+    }
+
+    /// Images are laid out again when the setting changes.
+    @objc private func centersImagesChanged(_ notification: Notification?) {
+        guard let layoutManager = textView.layoutManager as? EditorLayoutManager,
+              layoutManager.centersImages != settings.centersImages else { return }
+        layoutManager.centersImages = settings.centersImages
+        layoutManager.invalidateLayout(forCharacterRange: NSRange(location: 0, length: storage.length),
+                                       actualCharacterRange: nil)
     }
 
     @objc private func showsLineNumbersChanged(_ notification: Notification) {

@@ -139,6 +139,10 @@ extension EditorViewController {
 
 /// Shades the lines of code blocks across the full width of the text.
 final class EditorLayoutManager: NSLayoutManager {
+    /// Whether an image alone on its line is centred (`Settings.centersImages`).
+    /// `ImageAttachmentCell` reads it.
+    var centersImages = false
+
     /// The bar beside a blockquote's lines.
     static let quoteBarColor = NSColor(name: nil) { appearance in
         appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? NSColor(white: 1, alpha: 0.3) : NSColor(white: 0, alpha: 0.2)

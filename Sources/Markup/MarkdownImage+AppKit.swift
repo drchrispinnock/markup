@@ -83,13 +83,47 @@ final class ImageAttachmentCell: NSTextAttachmentCell {
 
     override func cellFrame(for textContainer: NSTextContainer, proposedLineFragment lineFrag: NSRect,
                             glyphPosition position: NSPoint, characterIndex charIndex: Int) -> NSRect {
-        MainActor.assumeIsolated {
+        nonisolated(unsafe) let textContainer = textContainer
+        return MainActor.assumeIsolated {
             // For now, images show at their actual size even when that is
             // wider than the text. Fitting them to `lineFrag` as the
             // placeholder is would shrink them to the text width.
             let maxWidth = picture == nil ? max(lineFrag.width - 2, 16) : .greatestFiniteMagnitude
-            return NSRect(origin: .zero, size: size(fittingWidth: maxWidth))
+            let size = size(fittingWidth: maxWidth)
+            drawnWidth = size.width
+            // A centred image's cell takes the rest of the line, and the
+            // image is drawn in the middle of it.
+            guard (textContainer.layoutManager as? EditorLayoutManager)?.centersImages == true,
+                  let textStorage = textContainer.layoutManager?.textStorage,
+                  Self.isAloneOnLine(at: charIndex, in: textStorage) else {
+                return NSRect(origin: .zero, size: size)
+            }
+            // Less a point, so that the newline after it stays on the line.
+            let rest = lineFrag.width - textContainer.lineFragmentPadding - position.x - 1
+            return NSRect(origin: .zero, size: NSSize(width: max(size.width, floor(rest)), height: size.height))
         }
+    }
+
+    /// The width the image is drawn at, as last laid out.
+    private var drawnWidth: CGFloat = 0
+
+    /// Whether the image at `index` is the only thing shown on its line, so
+    /// that it can be centred: everything else there is white space or
+    /// hidden (comments and HTML tags), and it isn't in a table cell, whose
+    /// alignment is its own. Leanpub's and HTML's alignments will count as
+    /// formatting here too, once the editor reads them.
+    static func isAloneOnLine(at index: Int, in text: NSAttributedString) -> Bool {
+        guard index < text.length, text.blockStyle(at: index) != .table else { return false }
+        let string = text.string as NSString
+        let line = string.lineRange(for: NSRange(location: index, length: 0))
+        for other in line.location..<NSMaxRange(line) where other != index {
+            let character = string.character(at: other)
+            if let scalar = Unicode.Scalar(character), CharacterSet.whitespacesAndNewlines.contains(scalar) { continue }
+            let attributes = text.attributes(at: other, effectiveRange: nil)
+            if attributes[.markdownComment] != nil || attributes[.markdownHTML] != nil { continue }
+            return false
+        }
+        return true
     }
 
     // An image sits on the baseline. The placeholder is centred on the
@@ -99,6 +133,11 @@ final class ImageAttachmentCell: NSTextAttachmentCell {
     }
 
     override func draw(withFrame cellFrame: NSRect, in controlView: NSView?) {
+        var cellFrame = cellFrame
+        if drawnWidth > 0, drawnWidth < cellFrame.width {
+            cellFrame = NSRect(x: cellFrame.minX + floor((cellFrame.width - drawnWidth) / 2), y: cellFrame.minY,
+                               width: drawnWidth, height: cellFrame.height)
+        }
         if let picture {
             picture.draw(in: cellFrame, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
             return

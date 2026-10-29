@@ -9,6 +9,7 @@ final class Settings {
     static let imagesDirectoryKey = "MarkupImagesDirectory"
     static let openProjectsKey = "MarkupOpenProjects"
     static let recentProjectsKey = "MarkupRecentProjects"
+    static let centersImagesKey = "MarkupCentersImages"
     static let addsHeadingIDsKey = "MarkupAddsHeadingIDs"
     static let headingIDFormKey = "MarkupHeadingIDForm"
     static let headingIDSchemeKey = "MarkupHeadingIDScheme"
@@ -88,6 +89,17 @@ final class Settings {
         set { defaults.set(newValue, forKey: Self.hangingBibliographyKey) }
     }
 
+    /// Whether the Formatted view centres an image alone on its line, for
+    /// now every such image, since none carries alignment of its own yet.
+    /// Posts `.markupCentersImagesChanged` when set, so editors relay out.
+    var centersImages: Bool {
+        get { defaults.object(forKey: Self.centersImagesKey) as? Bool ?? true }
+        set {
+            defaults.set(newValue, forKey: Self.centersImagesKey)
+            NotificationCenter.default.post(name: .markupCentersImagesChanged, object: self)
+        }
+    }
+
     /// Whether the Markdown view numbers its lines. Off unless turned on.
     /// Posts `.markupShowsLineNumbersChanged` when set, so every editor
     /// follows.
@@ -155,6 +167,8 @@ final class Settings {
 }
 
 extension Notification.Name {
+    /// Posted by `Settings` when `centersImages` changes.
+    static let markupCentersImagesChanged = Notification.Name("MarkupCentersImagesChanged")
     /// Posted by `Settings` when `showsLineNumbers` changes.
     static let markupShowsLineNumbersChanged = Notification.Name("MarkupShowsLineNumbersChanged")
 }

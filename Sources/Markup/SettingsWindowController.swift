@@ -7,6 +7,8 @@ final class SettingsWindowController: NSWindowController {
     let settings: Settings
     let imagesDirectoryControl = NSPathControl()
     let clearButton = NSButton(title: "Clear", target: nil, action: nil)
+    let centersImagesCheckbox = NSButton(checkboxWithTitle: "Centre images on lines of their own", target: nil,
+                                         action: nil)
     let addsHeadingIDsCheckbox = NSButton(checkboxWithTitle: "Give headings an ID when saving", target: nil, action: nil)
     let headingIDFormPopUp = NSPopUpButton()
     let headingIDSchemePopUp = NSPopUpButton()
@@ -58,6 +60,9 @@ final class SettingsWindowController: NSWindowController {
         note.textColor = .secondaryLabelColor
         note.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
 
+        centersImagesCheckbox.target = self
+        centersImagesCheckbox.action = #selector(centersImagesChanged(_:))
+
         addsHeadingIDsCheckbox.target = self
         addsHeadingIDsCheckbox.action = #selector(headingIDsChanged(_:))
         for form in HeadingAnchor.Form.allCases {
@@ -96,6 +101,7 @@ final class SettingsWindowController: NSWindowController {
             [label, imagesDirectoryControl],
             [NSGridCell.emptyContentView, buttons],
             [NSGridCell.emptyContentView, note],
+            [NSTextField(labelWithString: "Formatted view:"), centersImagesCheckbox],
             [NSTextField(labelWithString: "Heading IDs:"), addsHeadingIDsCheckbox],
             [NSTextField(labelWithString: "Write as:"), headingIDFormPopUp],
             [NSTextField(labelWithString: "Make from:"), headingIDSchemePopUp],
@@ -106,7 +112,8 @@ final class SettingsWindowController: NSWindowController {
             [NSGridCell.emptyContentView, variablesNote],
         ])
         grid.row(at: 3).topPadding = 12
-        grid.row(at: 8).topPadding = 12
+        grid.row(at: 4).topPadding = 12
+        grid.row(at: 9).topPadding = 12
         grid.column(at: 0).xPlacement = .trailing
         grid.rowAlignment = .firstBaseline
         grid.rowSpacing = 8
@@ -126,6 +133,7 @@ final class SettingsWindowController: NSWindowController {
         showImagesDirectory()
         showHeadingIDs()
         quickVariablesCheckbox.state = settings.quickVariables ? .on : .off
+        centersImagesCheckbox.state = settings.centersImages ? .on : .off
         hangingBibliographyCheckbox.state = settings.hangingBibliography ? .on : .off
     }
 
@@ -168,6 +176,10 @@ final class SettingsWindowController: NSWindowController {
             settings.crossFileLinks = links
         }
         showHeadingIDs()
+    }
+
+    @objc func centersImagesChanged(_ sender: Any?) {
+        settings.centersImages = centersImagesCheckbox.state == .on
     }
 
     @objc func quickVariablesChanged(_ sender: Any?) {

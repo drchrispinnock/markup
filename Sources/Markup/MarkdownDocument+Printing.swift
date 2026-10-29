@@ -28,7 +28,9 @@ extension MarkdownDocument {
     static func printView(for markdown: String, plainText: Bool, imageFolders: [URL],
                           width: CGFloat) -> NSTextView {
         let textView = NSTextView(usingTextLayoutManager: false)
-        textView.textContainer?.replaceLayoutManager(EditorLayoutManager())
+        let layoutManager = EditorLayoutManager()
+        layoutManager.centersImages = Settings.shared.centersImages
+        textView.textContainer?.replaceLayoutManager(layoutManager)
         textView.frame = NSRect(x: 0, y: 0, width: width, height: 0)
         textView.isEditable = false
         textView.isVerticallyResizable = true
