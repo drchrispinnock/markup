@@ -40,9 +40,11 @@ extension EditorViewController {
         while location < storage.length - distanceFromEnd {
             removeMarkers(insideLineAt: lineRange(at: location))
             let line = lineRange(at: location)
-            // Code blocks keep their text as typed.
+            // Code blocks keep their text as typed, but for variables and
+            // citations.
             if line.length > 0, listItem(at: line) == nil, storage.blockStyle(at: line.location) == .code {
-                location = NSMaxRange(line)
+                convertTags(in: line, after: edit)
+                location = NSMaxRange(lineRange(at: location))
                 continue
             }
             // An ID typed or pasted above a heading becomes its ID.

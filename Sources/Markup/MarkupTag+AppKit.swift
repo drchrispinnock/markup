@@ -21,6 +21,19 @@ extension MarkupTag {
         return NSAttributedString(string: "\u{FFFC}", attributes: attributes)
     }
 
+    /// A code line as typed, with `attributes`, except that its variables
+    /// are tags, as elsewhere. Saving writes a block with variables after a
+    /// template (`CodeTemplate`).
+    @MainActor
+    static func codeText(_ text: String, attributes: [NSAttributedString.Key: Any]) -> NSAttributedString {
+        let result = NSMutableAttributedString(string: text, attributes: attributes)
+        for (range, tag) in tags(in: text).reversed() where tag.kind == .variable {
+            result.replaceCharacters(in: NSRange(location: range.lowerBound, length: range.count),
+                                     with: tag.attachmentString(attributes: attributes))
+        }
+        return result
+    }
+
     var toolTip: String {
         switch kind {
         case .variable: isUnknown ? "Variable \(name) has no value" : "Variable \(name)"

@@ -119,8 +119,17 @@ public enum MarkdownCodec {
         while index < raw.count {
             if let fence = CodeFence(line: raw[index]), let end = closingFence(of: fence, in: raw, after: index) {
                 lists.end()
-                for (offset, text) in raw[index + 1..<end].enumerated() {
-                    lines.append(Line(style: .code, text: String(text), fence: offset == 0 ? fence : nil))
+                var texts = raw[index + 1..<end].map(String.init)
+                // A template just before the block gives it its variables.
+                // One the block no longer fits stays, as a comment.
+                if let last = lines.last, last.style == .paragraph, last.list == nil,
+                   let template = CodeTemplate.lines(ofComment: last.text),
+                   let marked = CodeTemplate.marked(Array(raw[index + 1..<end]), template: template) {
+                    lines.removeLast()
+                    texts = marked
+                }
+                for (offset, text) in texts.enumerated() {
+                    lines.append(Line(style: .code, text: text, fence: offset == 0 ? fence : nil))
                 }
                 index = end + 1
                 continue
@@ -204,13 +213,18 @@ public enum MarkdownCodec {
             var end = index + 1
             while end < lines.count, lines[end].style == .code, lines[end].fence == nil { end += 1 }
             var fence = lines[index].fence ?? CodeFence()
+            // Variables are written as their values, after a template.
+            let texts = lines[index..<end].map(\.text)
+            let template = CodeTemplate.comment(for: texts)
+            let shown = template == nil ? texts : texts.map(CodeTemplate.values(of:))
             // A line of exactly the fence's backticks would end the block.
-            while lines[index..<end].contains(where: { $0.text == String(repeating: "`", count: fence.backticks) }) {
+            while shown.contains(where: { $0 == String(repeating: "`", count: fence.backticks) }) {
                 fence.backticks += 1
             }
             let marker = String(repeating: "`", count: fence.backticks)
+            if let template { written.append((template, .other)) }
             written.append((marker + fence.info, .other))
-            written += lines[index..<end].map { ($0.text, .other) }
+            written += shown.map { ($0, .other) }
             written.append((marker, .other))
             index = end
         }
@@ -268,8 +282,24 @@ public enum MarkdownCodec {
         }
         while index < raw.count {
             if let fence = CodeFence(line: raw[index]), let end = closingFence(of: fence, in: raw, after: index) {
+                var code = raw[index + 1..<end].map(String.init)
+                // A template just before the block gives it its variables.
+                if text.last == Substring(CodeTemplate.closing),
+                   let start = text.lastIndex(of: Substring(CodeTemplate.opening)),
+                   let template = CodeTemplate.lines(ofComment: text[start...].joined(separator: "\n")),
+                   let marked = CodeTemplate.marked(Array(raw[index + 1..<end]), template: template) {
+                    text.removeSubrange(start...)
+                    code = marked
+                }
                 flush(true)
-                pieces.append(.code(raw[index + 1..<end].map(String.init), fence: fence))
+                pieces.append(.code(code, fence: fence))
+                index = end + 1
+                continue
+            }
+            // A comment's lines are text, even one that looks like a fence.
+            if HTMLComment.opensUnclosed(raw[index]),
+               let end = raw[(index + 1)...].firstIndex(where: { HTMLComment.closes($0) }) {
+                text += raw[index...end]
                 index = end + 1
                 continue
             }

@@ -178,28 +178,35 @@ extension EditorViewController {
 
     /// Replaces typed or pasted variables and citations that the edit
     /// touched, and with the quick variables setting, `@name@`, with the
-    /// variable. Its value is
-    /// set from the project's files, if there are any.
+    /// variable. Its value is set from the project's files, if there are
+    /// any. In a code block only variables convert, which saving writes
+    /// after a template (`CodeTemplate`), and `@name@` only when the
+    /// project has that variable, since `@` is common in code. Nothing
+    /// converts in inline code, which would show the comments.
     func convertTags(in line: NSRange, after edit: NSRange) {
         let contents = contentsRange(of: line)
         let string = storage.string as NSString
         let text = string.substring(with: contents)
-        var found = MarkupTag.tags(in: text).map { (range: NSRange(location: $0.range.lowerBound, length: $0.range.count), tag: $0.tag) }
+        let isCode = line.length > 0 && storage.blockStyle(at: line.location) == .code
+        var found = MarkupTag.tags(in: text).filter { !isCode || $0.tag.kind == .variable }.map {
+            (range: NSRange(location: $0.range.lowerBound, length: $0.range.count), tag: $0.tag)
+        }
+        let sources = tagSources
         if settings.quickVariables {
             for match in Self.quickVariable.matches(in: text, range: NSRange(location: 0, length: contents.length))
             where !found.contains(where: { NSIntersectionRange($0.range, match.range).length > 0 }) {
                 let name = (text as NSString).substring(with: match.range(at: 1))
+                guard !isCode || sources?.variables?[name] != nil else { continue }
                 found.append((match.range, MarkupTag(name: name, value: MarkupTag.unknownValue)))
             }
         }
-        let sources = tagSources
         for (match, tag) in found.sorted(by: { $0.range.location > $1.range.location }) {
             let range = NSRange(location: contents.location + match.location, length: match.length)
             let touched = edit.length > 0
                 ? NSIntersectionRange(range, edit).length > 0
                 : range.location < edit.location && edit.location < NSMaxRange(range)
             guard touched, string.rangeOfCharacter(from: CharacterSet(charactersIn: "\u{FFFC}"), range: range).location == NSNotFound,
-                  !isInlineCode(range), !followsUnclosedBacktick(range, in: contents)
+                  isCode || (!isInlineCode(range) && !followsUnclosedBacktick(range, in: contents))
             else { continue }
 
             let selection = textView.selectedRange()

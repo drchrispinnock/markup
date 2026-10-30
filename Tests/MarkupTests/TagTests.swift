@@ -169,6 +169,49 @@ import Testing
         #expect(editor.markdown == "By \(Self.tag("name", "Signet")) and a@b.com or me@x@ ")
     }
 
+    @Test func variablesInCodeBlocksAreVariablesWrittenAfterATemplate() throws {
+        defer { cleanUp() }
+        let block = "<!-- MARKUPCODE\nnode @name@ --run\n-->\n```sh\nnode Old --run\n```\nAfter"
+        editor.load(markdown: block)
+        #expect(textView.string == "node \u{FFFC} --run\nAfter")
+        #expect(tags == [MarkupTag(name: "name", value: "Old")])
+        #expect(editor.markdown == block)
+        step { editor.updateTags() }
+        #expect(tags.map(\.value) == ["Signet"])
+        #expect(editor.markdown == block.replacingOccurrences(of: "Old", with: "Signet"))
+        // Copied as Markdown, template and all.
+        #expect(editor.plainText(for: NSRange(location: 0, length: 12))
+            == "<!-- MARKUPCODE\nnode @name@ --run\n-->\n```sh\nnode Signet --run\n```")
+
+        // Inserted into code, a variable converts, and so does @name@ for
+        // a variable the project has.
+        settings.quickVariables = true
+        textView.setSelectedRange(NSRange(location: 4, length: 0))
+        step { editor.insertVariable(named: "noofbakers") }
+        type(" @name@ @other@")
+        #expect(textView.string.hasPrefix("node\u{FFFC} \u{FFFC} @other@ \u{FFFC} --run\n"))
+        #expect(editor.markdown.hasPrefix(
+            "<!-- MARKUPCODE\nnode@noofbakers@ @name@ @@other@@ @name@ --run\n-->\n```sh\nnode2 Signet @other@ Signet --run\n```"))
+    }
+
+    @Test func variablesInInlineCodeDontConvert() {
+        defer { cleanUp() }
+        editor.load(markdown: "Run `v` now")
+        textView.setSelectedRange(NSRange(location: 5, length: 0))
+        step { editor.insertVariable(named: "name") }
+        #expect(tags.isEmpty)
+    }
+
+    @Test func variablesInPastedCodeBlocksAreVariables() {
+        defer { cleanUp() }
+        editor.load(markdown: "")
+        let pasted = "Text\n<!-- MARKUPCODE\nx @name@\n-->\n```\nx Old\n```\n"
+        step { _ = editor.paste(pasted) }
+        #expect(textView.string == "Text\nx \u{FFFC}\n")
+        #expect(tags.map(\.name) == ["name"])
+        #expect(editor.markdown == pasted)
+    }
+
     @Test func variablesTakeInlineStylesAndCopyAsMarkdown() {
         defer { cleanUp() }
         editor.load(markdown: "**\(Self.tag("name", "Signet"))** text")
@@ -201,7 +244,7 @@ import Testing
         #expect(files == 2 && failed.isEmpty)
         #expect(tags.map(\.value) == ["4"])
         let other = try String(contentsOf: folder.appendingPathComponent("other.md"), encoding: .utf8)
-        #expect(other == "By \(Self.tag("name", "New")).\n```\n\(Self.tag("name", "Old"))\n```\n")
+        #expect(other == "By \(Self.tag("name", "New")).\n<!-- MARKUPCODE\n@name@\n-->\n```\nNew\n```\n")
         // The file on disk is read again.
         #expect(project.markdownFiles().first { $0.url.lastPathComponent == "other.md" }?.markdown == other)
     }

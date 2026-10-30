@@ -97,7 +97,8 @@ extension EditorViewController {
                 let caretLine = lineRange(at: range.location)
                 var attributes = BlockStyle.code.attributes
                 if fence != CodeFence() { attributes[.codeFence] = fence }
-                let code = NSMutableAttributedString(string: lines.joined(separator: "\n"), attributes: attributes)
+                let code = NSMutableAttributedString(attributedString: MarkupTag.codeText(lines.joined(separator: "\n"),
+                                                                                          attributes: attributes))
                 if index < pieces.count - 1 || NSMaxRange(range) < NSMaxRange(contentsRange(of: caretLine)) {
                     code.append(NSAttributedString(string: "\n", attributes: attributes))
                 }

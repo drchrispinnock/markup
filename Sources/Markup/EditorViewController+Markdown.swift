@@ -47,13 +47,14 @@ extension EditorViewController {
                 text.append(item.markerString)
                 text.append(inlineText(line.text + terminator, attributes: item.lineAttributes, imageFolders: imageFolders))
             } else if line.style == .code {
-                // Code is kept as typed. Its block's fence, if not plain,
-                // is on every character, so later lines can be told apart
-                // from the next block.
+                // Code is kept as typed, but for its variables and
+                // citations. Its block's fence, if not plain, is on every
+                // character, so later lines can be told apart from the next
+                // block.
                 if let fence = line.fence { blockFence = fence == CodeFence() ? nil : fence }
                 var attributes = BlockStyle.code.attributes
                 attributes[.codeFence] = blockFence
-                text.append(NSAttributedString(string: line.text + terminator, attributes: attributes))
+                text.append(MarkupTag.codeText(line.text + terminator, attributes: attributes))
             } else if line.style == .paragraph, line.list == nil, Self.hiddenLines.contains(line.text) {
                 // Kept as written, like a comment, and hidden.
                 var attributes = line.style.attributes

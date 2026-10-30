@@ -33,8 +33,11 @@ import Testing
         #expect(VariableFile.values(fromFiles: ["a|1\n", "a|2\nb|3\n"]) == ["a": "1", "b": "3"])
     }
 
-    @Test func updatesValuesOutsideCode() {
+    @Test func updatesValuesExceptInFrontMatter() {
         let markdown = """
+            ---
+            v: <!-- MARKUPTAG a-->old<!-- ENDMARKUPTAG -->
+            ---
             # <!-- MARKUPTAG a-->old<!-- ENDMARKUPTAG -->
             Text <!-- MARKUPTAG a-->old<!-- ENDMARKUPTAG --> and <!-- MARKUPTAG gone-->1<!-- ENDMARKUPTAG -->
             ```
@@ -42,10 +45,16 @@ import Testing
             ```
             """
         #expect(MarkupTag.updating(markdown: markdown, from: TagSources(variables: ["a": "new"])) == """
+            ---
+            v: <!-- MARKUPTAG a-->old<!-- ENDMARKUPTAG -->
+            ---
             # <!-- MARKUPTAG a-->new<!-- ENDMARKUPTAG -->
             Text <!-- MARKUPTAG a-->new<!-- ENDMARKUPTAG --> and <!-- MARKUPTAG gone-->??<!-- ENDMARKUPTAG -->
+            <!-- MARKUPCODE
+            @a@
+            -->
             ```
-            <!-- MARKUPTAG a-->old<!-- ENDMARKUPTAG -->
+            new
             ```
             """)
         let current = "x <!-- MARKUPTAG a-->new<!-- ENDMARKUPTAG -->\n"
