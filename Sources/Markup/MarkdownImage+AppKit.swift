@@ -14,12 +14,27 @@ extension MarkdownImage {
     func attachmentString(markdown: String, attributes: [NSAttributedString.Key: Any],
                           folders: [URL]) -> NSAttributedString {
         let attachment = NSTextAttachment()
-        attachment.attachmentCell = ImageAttachmentCell(picture: fileURL(in: folders).flatMap(NSImage.init(contentsOf:)),
+        let url = fileURL(in: folders)
+        let picture = url.flatMap(NSImage.init(contentsOf:))
+        attachment.attachmentCell = ImageAttachmentCell(picture: picture, code: picture == nil ? includedText(at: url) : nil,
                                                         path: path)
         var attributes = attributes
         attributes[.attachment] = attachment
         attributes[.markdownImage] = markdown
         return NSAttributedString(string: "\u{FFFC}", attributes: attributes)
+    }
+
+    /// The text of a file that isn't a picture, as Leanpub includes a
+    /// resource such as a configuration file in the book as code; nil if
+    /// it isn't text.
+    func includedText(in folders: [URL]) -> String? {
+        let url = fileURL(in: folders)
+        return url.flatMap(NSImage.init(contentsOf:)) == nil ? includedText(at: url) : nil
+    }
+
+    private func includedText(at url: URL?) -> String? {
+        guard let url, let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        return text.hasSuffix("\n") ? String(text.dropLast()) : text
     }
 
     /// The image's file: the path looked up in each folder in turn. A path
@@ -43,13 +58,18 @@ extension MarkdownImage {
 }
 
 /// Draws an image at its actual size, or a placeholder naming the path if
-/// the image can't be found.
+/// the image can't be found. A text file, which Leanpub includes as code,
+/// is drawn as a code block across the text, under the caption from the
+/// attribute list above it (`{caption: "x", format: ini}`), if any.
 final class ImageAttachmentCell: NSTextAttachmentCell {
     let picture: NSImage?
+    /// The text of an included text file.
+    let code: String?
     let path: String
 
-    init(picture: NSImage?, path: String) {
+    init(picture: NSImage?, code: String? = nil, path: String) {
         self.picture = picture
+        self.code = code
         self.path = path
         super.init(imageCell: nil)
     }
@@ -88,6 +108,13 @@ final class ImageAttachmentCell: NSTextAttachmentCell {
             // For now, images show at their actual size even when that is
             // wider than the text. Fitting them to `lineFrag` as the
             // placeholder is would shrink them to the text width.
+            if let code, let textStorage = textContainer.layoutManager?.textStorage {
+                // Less a point, so that the newline after it stays on the line.
+                let width = max(floor(lineFrag.width - textContainer.lineFragmentPadding - position.x - 1), 100)
+                caption = Self.caption(above: charIndex, in: textStorage)
+                drawnWidth = 0
+                return NSRect(origin: .zero, size: NSSize(width: width, height: codeLayout(code, width: width).height))
+            }
             let maxWidth = picture == nil ? max(lineFrag.width - 2, 16) : .greatestFiniteMagnitude
             let size = size(fittingWidth: maxWidth)
             drawnWidth = size.width
@@ -132,7 +159,67 @@ final class ImageAttachmentCell: NSTextAttachmentCell {
         MainActor.assumeIsolated { NSPoint(x: 0, y: picture == nil ? -9 : 0) }
     }
 
+    // MARK: - Included text
+
+    /// The caption of the included file, from the attribute list on the
+    /// hidden line above it, as last laid out.
+    private var caption: String?
+
+    static func caption(above index: Int, in text: NSAttributedString) -> String? {
+        let string = text.string as NSString
+        let line = string.lineRange(for: NSRange(location: index, length: 0))
+        guard line.location > 0 else { return nil }
+        let above = string.lineRange(for: NSRange(location: line.location - 1, length: 0))
+        guard above.length > 0, let markdown = text.attribute(.markdownComment, at: above.location, effectiveRange: nil) as? String
+        else { return nil }
+        return AttributeList(line: markdown)?["caption"]
+    }
+
+    private static let codePadding: CGFloat = 8
+    private static let captionAttributes: [NSAttributedString.Key: Any] = [
+        .font: NSFont.systemFont(ofSize: 11, weight: .medium),
+        .foregroundColor: NSColor.secondaryLabelColor,
+    ]
+
+    private static func codeText(_ code: String) -> NSAttributedString {
+        NSAttributedString(string: code, attributes: [.font: BlockStyle.code.font(for: []), .foregroundColor: NSColor.textColor])
+    }
+
+    /// Where the caption and code go in a cell `width` wide, from its top,
+    /// and the cell's height.
+    private func codeLayout(_ code: String, width: CGFloat) -> (caption: NSRect?, box: NSRect, text: NSRect, height: CGFloat) {
+        var y: CGFloat = 4
+        var captionRect: NSRect?
+        if let caption, !caption.isEmpty {
+            let height = ceil((caption as NSString).size(withAttributes: Self.captionAttributes).height)
+            captionRect = NSRect(x: 0, y: y, width: width, height: height)
+            y += height + 4
+        }
+        let textWidth = width - 2 * Self.codePadding
+        let textHeight = ceil(Self.codeText(code).boundingRect(with: NSSize(width: textWidth, height: .greatestFiniteMagnitude),
+                                                               options: [.usesLineFragmentOrigin]).height)
+        let box = NSRect(x: 0, y: y, width: width, height: textHeight + 2 * Self.codePadding)
+        let text = box.insetBy(dx: Self.codePadding, dy: Self.codePadding)
+        return (captionRect, box, text, box.maxY + 4)
+    }
+
+    private func drawCode(_ code: String, in cellFrame: NSRect) {
+        let layout = codeLayout(code, width: cellFrame.width)
+        let offset = { (rect: NSRect) in rect.offsetBy(dx: cellFrame.minX, dy: cellFrame.minY) }
+        if let caption, let rect = layout.caption {
+            (caption as NSString).draw(with: offset(rect), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine],
+                                       attributes: Self.captionAttributes)
+        }
+        InlineStyle.codeBackground.setFill()
+        NSBezierPath(roundedRect: offset(layout.box), xRadius: 4, yRadius: 4).fill()
+        Self.codeText(code).draw(with: offset(layout.text), options: [.usesLineFragmentOrigin])
+    }
+
     override func draw(withFrame cellFrame: NSRect, in controlView: NSView?) {
+        if let code {
+            drawCode(code, in: cellFrame)
+            return
+        }
         var cellFrame = cellFrame
         if drawnWidth > 0, drawnWidth < cellFrame.width {
             cellFrame = NSRect(x: cellFrame.minX + floor((cellFrame.width - drawnWidth) / 2), y: cellFrame.minY,

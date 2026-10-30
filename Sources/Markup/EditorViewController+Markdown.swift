@@ -55,8 +55,16 @@ extension EditorViewController {
                 var attributes = BlockStyle.code.attributes
                 attributes[.codeFence] = blockFence
                 text.append(MarkupTag.codeText(line.text + terminator, attributes: attributes))
-            } else if line.style == .paragraph, line.list == nil, Self.hiddenLines.contains(line.text) {
-                // Kept as written, like a comment, and hidden.
+            } else if line.style == .paragraph, line.list == nil, let division = LeanpubDivision(line: line.text) {
+                let attributes = line.style.attributes
+                text.append(division.attachmentString(attributes: attributes))
+                text.append(NSAttributedString(string: terminator, attributes: attributes))
+            } else if line.style == .paragraph, line.list == nil,
+                      Self.hiddenLines.contains(line.text)
+                        || (AttributeList(line: line.text) != nil && index + 1 < lines.count
+                            && includesText(lines[index + 1], imageFolders: imageFolders)) {
+                // Kept as written, like a comment, and hidden. An included
+                // file shows the caption of the attribute list above it.
                 var attributes = line.style.attributes
                 attributes[.paragraphStyle] = HTMLComment.hiddenLineStyle
                 text.append(HTMLComment.attachmentString(markdown: line.text, attributes: attributes))
@@ -84,6 +92,16 @@ extension EditorViewController {
             if value != nil, formatted.insert(line.location).inserted { text.applyHTMLFormats(in: line) }
         }
         return text
+    }
+
+    /// Whether `line` is only an image whose file is text, which Leanpub
+    /// includes as code.
+    private static func includesText(_ line: Line, imageFolders: [URL]) -> Bool {
+        guard line.style == .paragraph, line.list == nil else { return false }
+        let text = line.text.trimmingCharacters(in: .whitespaces)
+        let images = MarkdownImage.images(in: text)
+        guard images.count == 1, images[0].range == 0..<text.utf16.count else { return false }
+        return images[0].image.includedText(in: imageFolders) != nil
     }
 
     /// One line's text (and newline, if any), with its emphasis, images and

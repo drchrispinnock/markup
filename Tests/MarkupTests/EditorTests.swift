@@ -1133,6 +1133,31 @@ import Testing
         #expect(editor.markdown == markdown)
     }
 
+    @Test func aTextFileIsIncludedAsCodeUnderItsCaption() throws {
+        defer { cleanUp() }
+        try Data("[Service]\nUser=tezos\n".utf8).write(to: imagesDirectory.appendingPathComponent("cats/node.default"))
+        let markdown = "Text\n{caption: \"/etc/default/octez-node\", format: ini}\n![](cats/node.default)\nAfter"
+        editor.load(markdown: markdown)
+        // The attribute list is a hidden line, kept as written.
+        #expect(storage.string == "Text\n\u{FFFC}\n\u{FFFC}\nAfter")
+        #expect(storage.attribute(.markdownComment, at: 5, effectiveRange: nil) as? String
+            == "{caption: \"/etc/default/octez-node\", format: ini}")
+        #expect(cell(at: 7)?.picture == nil)
+        #expect(cell(at: 7)?.code == "[Service]\nUser=tezos")
+        #expect(ImageAttachmentCell.caption(above: 7, in: storage) == "/etc/default/octez-node")
+        #expect(editor.markdown == markdown)
+
+        // It is as wide as the text.
+        let layoutManager = textView.layoutManager!
+        layoutManager.ensureLayout(for: textView.textContainer!)
+        let width = layoutManager.boundingRect(forGlyphRange: NSRange(location: 7, length: 1), in: textView.textContainer!).width
+        #expect(width > textView.textContainer!.size.width - 20)
+
+        // Above a picture, or a file not found, an attribute list is text.
+        editor.load(markdown: "{width: 50%}\n![](cats/tom.png)\n{caption: x}\n![](nope.txt)")
+        #expect(storage.string == "{width: 50%}\n\u{FFFC}\n{caption: x}\n\u{FFFC}")
+    }
+
     @Test func looksInTheImagesDirectoryThenTheDocumentsFolderThenResourcesThenImagesThenAbove() throws {
         defer { cleanUp() }
         let documentFolder = imagesDirectory.appendingPathComponent("site/doc")

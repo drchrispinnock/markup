@@ -81,6 +81,13 @@ enum MainMenu {
         insertMenu.addItem(withTitle: "Citation…", action: #selector(EditorViewController.insertCitation(_:)), keyEquivalent: "")
         insertMenu.addItem(withTitle: "Bibliography", action: #selector(EditorViewController.insertBibliography(_:)),
                            keyEquivalent: "")
+        insertMenu.addItem(.separator())
+        let leanpubMenu = NSMenu(title: "Leanpub")
+        for (index, division) in LeanpubDivision.allCases.enumerated() {
+            leanpubMenu.addItem(withTitle: division.title, action: #selector(EditorViewController.insertLeanpubDivision(_:)),
+                                keyEquivalent: "").tag = index
+        }
+        insertMenu.addItem(submenu: leanpubMenu, title: "Leanpub")
         // Only project windows have a variables.txt or bibliography.txt.
         insertMenu.addItem(withTitle: "Update Variables in Project",
                            action: #selector(ProjectWindowController.updateVariablesInProject(_:)), keyEquivalent: "")

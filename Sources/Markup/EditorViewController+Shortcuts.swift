@@ -52,6 +52,12 @@ extension EditorViewController {
                convertAnchorLine(line) {
                 continue
             }
+            // So does a Leanpub division, on a line of its own.
+            if NSIntersectionRange(line, edit).length > 0 || NSLocationInRange(edit.location, line),
+               convertDivisionLine(line) {
+                location = NSMaxRange(lineRange(at: location))
+                continue
+            }
             if isTableLine(line) {
                 // A cell can't be a heading or list item.
             } else if let item = listItem(at: line) {

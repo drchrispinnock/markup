@@ -94,26 +94,9 @@ extension EditorViewController {
     /// its own at the caret, or below its line.
     @objc func insertBibliography(_ sender: Any?) {
         guard !isShowingMarkdown, !isPlainText, let sources = tagSources, let bibliography = sources.bibliography else { return }
-        var line = lineRange(at: textView.selectedRange().location)
-        if isTableLine(line) { line = tableLines(around: line).last! }
-        let text = NSMutableAttributedString(attributedString: Self.formattedText(
-            fromMarkdown: bibliography.markdown(hanging: sources.hangingBibliography), imageFolders: imageFolders))
-        let contents = contentsRange(of: line)
-        let location: Int
-        if contents.length == 0, !isTableLine(line) {
-            location = line.location
-        } else if NSMaxRange(contents) == NSMaxRange(line) {
-            // The last line, with no newline to end it.
-            location = NSMaxRange(line)
-            text.insert(NSAttributedString(string: "\n", attributes: BlockStyle.paragraph.attributes), at: 0)
-        } else {
-            location = NSMaxRange(line)
-            text.append(NSAttributedString(string: "\n", attributes: BlockStyle.paragraph.attributes))
-        }
-        replaceCharacters(in: NSRange(location: location, length: 0), with: text)
-        textView.setSelectedRange(NSRange(location: location + text.length, length: 0))
+        insertOnLinesOfTheirOwn(NSMutableAttributedString(attributedString: Self.formattedText(
+            fromMarkdown: bibliography.markdown(hanging: sources.hangingBibliography), imageFolders: imageFolders)))
         undoManager?.setActionName("Insert Bibliography")
-        view.window?.makeFirstResponder(textView)
     }
 
     // MARK: - Citations
