@@ -78,6 +78,77 @@ public enum CodeTemplate {
         return marked
     }
 
+    // MARK: - Inline code
+
+    /// `text`, a line's Markdown, with each template comment that is
+    /// followed by inline code that fits it taken away, and the variables
+    /// put in the code: `<!-- MARKUPCODE @d@/x -->`/etc/x`` is read as
+    /// `` `<!-- MARKUPTAG d-->/etc<!-- ENDMARKUPTAG -->/x` ``.
+    public static func readingInlineCode(in text: String) -> String {
+        guard text.contains(opening) else { return text }
+        let string = text as NSString
+        var result = text
+        for match in inlinePattern.matches(in: text, range: NSRange(location: 0, length: string.length)).reversed() {
+            let template = string.substring(with: match.range(at: 1))
+            let ticks = string.substring(with: match.range(at: 2))
+            let code = string.substring(with: match.range(at: 3))
+            guard let marked = marked([Substring(code)], template: [Substring(template)])?.first else { continue }
+            result = (result as NSString).replacingCharacters(in: match.range, with: ticks + marked + ticks)
+        }
+        return result
+    }
+
+    /// `text`, a line's Markdown, with each piece of inline code holding
+    /// variables written as their values, after a template comment.
+    public static func writingInlineCode(in text: String) -> String {
+        guard text.contains("`"), !MarkupTag.tags(in: text).isEmpty else { return text }
+        let characters = Array(text)
+        var result = ""
+        var index = 0
+        while index < characters.count {
+            let character = characters[index]
+            if character == "\\", index + 1 < characters.count {
+                result.append(contentsOf: [character, characters[index + 1]])
+                index += 2
+                continue
+            }
+            guard character == "`" else {
+                result.append(character)
+                index += 1
+                continue
+            }
+            var end = index
+            while end < characters.count, characters[end] == "`" { end += 1 }
+            let ticks = end - index
+            // The next run of exactly as many backticks closes the code.
+            var closing: Int?
+            var search = end
+            while search < characters.count {
+                guard characters[search] == "`" else { search += 1; continue }
+                var runEnd = search
+                while runEnd < characters.count, characters[runEnd] == "`" { runEnd += 1 }
+                if runEnd - search == ticks { closing = search; break }
+                search = runEnd
+            }
+            guard let closing else {
+                result += String(characters[index..<end])
+                index = end
+                continue
+            }
+            let code = String(characters[end..<closing])
+            let run = String(repeating: "`", count: ticks)
+            if let template = template(of: code) {
+                result += "\(opening) \(template) \(Self.closing)" + run + values(of: code) + run
+            } else {
+                result += run + code + run
+            }
+            index = closing + ticks
+        }
+        return result
+    }
+
+    private static let inlinePattern = try! NSRegularExpression(pattern: #"<!-- MARKUPCODE (.*?) -->(`+)(?!`)(.*?)(?<!`)\2(?!`)"#)
+
     // MARK: - Templates
 
     private enum Piece {

@@ -66,4 +66,38 @@ import Testing
         let updated = MarkupTag.updating(markdown: Self.written, from: TagSources(variables: ["octez": "26.0", "a.b-c": "1"]))
         #expect(updated == Self.written.replacingOccurrences(of: "(25.2)", with: "(26.0)"))
     }
+
+    // MARK: - Inline code
+
+    @Test func readsAndWritesInlineCode() {
+        let written = "Change `ENDPOINT` in <!-- MARKUPCODE @defaultdir@/octez-vdf -->`/etc/default/octez-vdf` now."
+        let lines = MarkdownCodec.lines(fromMarkdown: written)
+        #expect(lines[0].text == "Change `ENDPOINT` in `\(Self.tag("defaultdir", "/etc/default"))/octez-vdf` now.")
+        #expect(MarkdownCodec.markdown(from: lines) == written)
+    }
+
+    @Test func writesInlineCodeWithVariablesAfterATemplate() {
+        let lines = [Line(style: .heading2, text: "Run ``a`b @ \(Self.tag("v", "1"))`` and `\(Self.tag("w", "2"))-->`"),
+                     Line(style: .paragraph, text: "`\(Self.tag("v", "1"))`", list: ListItem(level: 0, marker: .bullet))]
+        let markdown = MarkdownCodec.markdown(from: lines)
+        #expect(markdown == """
+            ## Run <!-- MARKUPCODE a`b @@ @v@ -->``a`b @ 1`` and <!-- MARKUPCODE @w@--@> -->`2-->`
+            - <!-- MARKUPCODE @v@ -->`1`
+            """)
+        #expect(MarkdownCodec.lines(fromMarkdown: markdown).map(\.text) == lines.map(\.text))
+        // A variable outside code, and code without one, stay as they are.
+        let plain = "A \(Self.tag("v", "1")) and `code`"
+        #expect(MarkdownCodec.markdown(from: [Line(style: .paragraph, text: plain)]) == plain)
+    }
+
+    @Test func inlineCodeEditedElsewhereKeepsItsTextAndTheCommentStays() {
+        let edited = "<!-- MARKUPCODE @d@/x -->`/usr/y`"
+        #expect(MarkdownCodec.lines(fromMarkdown: edited)[0].text == edited)
+    }
+
+    @Test func updatingRewritesInlineCode() {
+        let written = "In <!-- MARKUPCODE @d@/x -->`/etc/x`."
+        #expect(MarkupTag.updating(markdown: written, from: TagSources(variables: ["d": "/opt"]))
+            == "In <!-- MARKUPCODE @d@/x -->`/opt/x`.")
+    }
 }

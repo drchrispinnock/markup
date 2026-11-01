@@ -33,6 +33,9 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
     /// The project's `bibliography.txt` as last read (`bibliography()`),
     /// likewise.
     var bibliographyOnDisk: Bibliography??
+    /// How many files `updateTags(from:)` would change (`outOfDateFileCount`),
+    /// until the folder changes.
+    var outOfDateFiles: Int?
 
     /// Moves a file or folder to the Trash (Delete in the sidebar's menu).
     /// Tests delete it instead, so as not to fill the Trash.

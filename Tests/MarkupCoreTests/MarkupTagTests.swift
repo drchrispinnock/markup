@@ -92,6 +92,18 @@ import Testing
         #expect(Bibliography(text: "X|a | b").entry(for: "X")?.text == "a | b")
     }
 
+    @Test func citedEntriesGetTheirKeysPinned() {
+        let text = "# Sources\nSEC|Tezos\nThe white paper\n  Getting started  \nR-2|Keyed\nUncited\n"
+        let white = Bibliography.key(for: "The white paper"), started = Bibliography.key(for: "Getting started")
+        let pinned = Bibliography.pinningKeys([white, started, "R-2", "SEC"], in: text)
+        #expect(pinned == "# Sources\nSEC|Tezos\n\(white)|The white paper\n\(started)|Getting started\nR-2|Keyed\nUncited\n")
+        // The entries are the same, under the same keys.
+        #expect(Bibliography(text: pinned!) == Bibliography(text: text))
+        #expect(Bibliography.pinningKeys([white, started], in: pinned!) == nil)
+        #expect(Bibliography.citedKeys(inMarkdown: "a <!-- MARKUPBIBTAG k -->[1]<!-- ENDMARKUPBIBTAG --> "
+            + "<!-- MARKUPTAG v-->x<!-- ENDMARKUPTAG -->") == ["k"])
+    }
+
     @Test func entriesNeedNoKey() {
         let text = "SEC|Tezos\nTezos — a self-amending crypto-ledger, L. M. Goodman, 2014\nR-2|Getting Started\nSite, 2024 | online"
         let bibliography = Bibliography(text: text)

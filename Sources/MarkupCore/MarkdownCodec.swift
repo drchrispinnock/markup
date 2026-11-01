@@ -174,10 +174,21 @@ public enum MarkdownCodec {
             }
             index += 1
         }
+        // Inline code's variables are read from their templates.
+        for index in lines.indices where lines[index].style != .code && lines[index].style != .frontMatter {
+            lines[index].text = CodeTemplate.readingInlineCode(in: lines[index].text)
+        }
         return lines
     }
 
     public static func markdown(from lines: [Line]) -> String {
+        // Inline code's variables are written as values, after templates.
+        let lines = lines.map { line in
+            guard line.style != .code, line.style != .frontMatter else { return line }
+            var line = line
+            line.text = CodeTemplate.writingInlineCode(in: line.text)
+            return line
+        }
         // Code blocks become their lines between fences. A block starts at a
         // line with a fence or after a line that isn't code.
         var written: [(text: String, kind: WrittenKind)] = []

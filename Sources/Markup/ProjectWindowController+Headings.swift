@@ -57,6 +57,7 @@ extension ProjectWindowController {
         filesOnDisk = nil
         variableValuesOnDisk = nil
         bibliographyOnDisk = nil
+        outOfDateFiles = nil
         NotificationCenter.default.post(name: .markupProjectFilesChanged, object: self)
     }
 }

@@ -63,6 +63,31 @@ public struct Bibliography: Equatable, Sendable {
         HeadingIDScheme.hash(text)
     }
 
+    /// `text`, a `bibliography.txt`, with each entry cited by one of `keys`
+    /// that has no key of its own given the key made from its text
+    /// (`hash|text`), so that the citations still find it once its text is
+    /// edited. Nil if there is none to give.
+    public static func pinningKeys(_ keys: Set<String>, in text: String) -> String? {
+        var changed = false
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map { line -> String in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { return String(line) }
+            if let bar = trimmed.firstIndex(of: "|"), MarkupTag.isValid(name: trimmed[..<bar].trimmingCharacters(in: .whitespaces)) {
+                return String(line)
+            }
+            let key = Self.key(for: trimmed)
+            guard keys.contains(key) else { return String(line) }
+            changed = true
+            return key + "|" + trimmed
+        }
+        return changed ? lines.joined(separator: "\n") : nil
+    }
+
+    /// The keys of the citations in `markdown`.
+    public static func citedKeys(inMarkdown markdown: String) -> Set<String> {
+        Set(MarkupTag.tags(in: markdown).filter { $0.tag.kind == .citation }.map(\.tag.name))
+    }
+
     /// The entry for `key`: the first, if more than one has it.
     public func entry(for key: String) -> Entry? {
         entries.first { $0.key == key }

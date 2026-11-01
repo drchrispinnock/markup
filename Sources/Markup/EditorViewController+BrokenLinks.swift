@@ -229,19 +229,18 @@ extension EditorViewController {
     }
 }
 
-/// The bar below the header saying that links go to a deleted heading.
-final class DeletedHeadingBar: NSView {
+/// A bar below the header: a warning, a message, buttons, and a close
+/// button, on a yellow tint.
+class NoticeBar: NSView {
     static let height: CGFloat = 32
 
     let label = NSTextField(labelWithString: "")
-    let undoButton = NSButton(title: "Undo", target: nil, action: nil)
-    let showLinksButton = NSButton(title: "Show Links", target: nil, action: nil)
+    let buttons: [NSButton]
     let closeButton = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close")!,
                                target: nil, action: nil)
-    /// The links that go to the deleted headings.
-    var places: [HeadingLinkPlace] = []
 
-    init(target: EditorViewController) {
+    init(target: AnyObject, buttons: [(title: String, action: Selector)], close: Selector) {
+        self.buttons = buttons.map { NSButton(title: $0.title, target: target, action: $0.action) }
         super.init(frame: .zero)
         wantsLayer = true
         layer?.masksToBounds = true
@@ -251,17 +250,13 @@ final class DeletedHeadingBar: NSView {
         icon.contentTintColor = .systemYellow
         label.lineBreakMode = .byTruncatingTail
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        for (button, action) in [(undoButton, #selector(EditorViewController.undoHeadingDeletion(_:))),
-                                 (showLinksButton, #selector(EditorViewController.showDeletedHeadingLinks(_:))),
-                                 (closeButton, #selector(EditorViewController.closeDeletedHeadingBar(_:)))] {
-            button.target = target
-            button.action = action
-            button.controlSize = .small
-        }
+        for button in self.buttons { button.controlSize = .small }
+        closeButton.target = target
+        closeButton.action = close
         closeButton.isBordered = false
         closeButton.toolTip = "Close"
 
-        let row = NSStackView(views: [icon, label, undoButton, showLinksButton])
+        let row = NSStackView(views: [icon, label] + self.buttons)
         row.spacing = 8
         row.setCustomSpacing(12, after: label)
         row.translatesAutoresizingMaskIntoConstraints = false
@@ -293,5 +288,17 @@ final class DeletedHeadingBar: NSView {
     override func draw(_ dirtyRect: NSRect) {
         NSColor.systemYellow.withAlphaComponent(0.15).setFill()
         dirtyRect.fill()
+    }
+}
+
+/// The bar below the header saying that links go to a deleted heading.
+final class DeletedHeadingBar: NoticeBar {
+    /// The links that go to the deleted headings.
+    var places: [HeadingLinkPlace] = []
+
+    init(target: EditorViewController) {
+        super.init(target: target, buttons: [("Undo", #selector(EditorViewController.undoHeadingDeletion(_:))),
+                                             ("Show Links", #selector(EditorViewController.showDeletedHeadingLinks(_:)))],
+                   close: #selector(EditorViewController.closeDeletedHeadingBar(_:)))
     }
 }

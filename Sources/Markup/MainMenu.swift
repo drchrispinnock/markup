@@ -89,7 +89,7 @@ enum MainMenu {
         }
         insertMenu.addItem(submenu: leanpubMenu, title: "Leanpub")
         // Only project windows have a variables.txt or bibliography.txt.
-        insertMenu.addItem(withTitle: "Update Variables in Project",
+        insertMenu.addItem(withTitle: "Update Variables and Citations in Project",
                            action: #selector(ProjectWindowController.updateVariablesInProject(_:)), keyEquivalent: "")
         mainMenu.addItem(submenu: insertMenu, title: "Insert")
 

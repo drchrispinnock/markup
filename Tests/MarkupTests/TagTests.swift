@@ -194,12 +194,23 @@ import Testing
             "<!-- MARKUPCODE\nnode@noofbakers@ @name@ @@other@@ @name@ --run\n-->\n```sh\nnode2 Signet @other@ Signet --run\n```"))
     }
 
-    @Test func variablesInInlineCodeDontConvert() {
+    @Test func variablesInInlineCodeAreWrittenAfterATemplate() {
         defer { cleanUp() }
+        let written = "In <!-- MARKUPCODE @name@/x -->`Old/x` now"
+        editor.load(markdown: written)
+        #expect(textView.string == "In \u{FFFC}/x now")
+        step { editor.updateTags() }
+        #expect(editor.markdown == "In <!-- MARKUPCODE @name@/x -->`Signet/x` now")
+
+        // Inserted, a variable converts, and @name@ for a variable the
+        // project has.
+        settings.quickVariables = true
         editor.load(markdown: "Run `v` now")
         textView.setSelectedRange(NSRange(location: 5, length: 0))
-        step { editor.insertVariable(named: "name") }
-        #expect(tags.isEmpty)
+        step { editor.insertVariable(named: "noofbakers") }
+        type(" @name@ @other@")
+        #expect(tags.map(\.value) == ["2", "Signet"])
+        #expect(editor.markdown == "Run <!-- MARKUPCODE v@noofbakers@ @name@ @@other@@ -->`v2 Signet @other@` now")
     }
 
     @Test func variablesInPastedCodeBlocksAreVariables() {
@@ -349,6 +360,43 @@ import Testing
         #expect(editor.markdown.hasPrefix("See" + Self.cite("R-1", "[1]") + " " + Self.cite("R-2", "[2]")))
         step { editor.insertCitation(of: "nope") }
         #expect(editor.markdown.contains(Self.cite("nope", "[??]")))
+    }
+
+    @Test func citingOrUpdatingTheProjectPinsTheEntrysKey() throws {
+        defer { cleanUp() }
+        let url = folder.appendingPathComponent("bibliography.txt")
+        try writeBibliography("First entry\nSecond entry\n")
+        let first = Bibliography.key(for: "First entry"), second = Bibliography.key(for: "Second entry")
+        step { editor.insertCitation(of: first) }
+        #expect(try String(contentsOf: url, encoding: .utf8) == "\(first)|First entry\nSecond entry\n")
+
+        // Another file's citation is pinned by updating the project.
+        try Data("\(Self.cite(second, "[2]"))".utf8).write(to: folder.appendingPathComponent("other.md"))
+        step { project.filesChanged() }
+        step { _ = project.updateTags(from: project.tagSources(settings: settings)) }
+        #expect(try String(contentsOf: url, encoding: .utf8) == "\(first)|First entry\n\(second)|Second entry\n")
+
+        // Now the text can change.
+        try writeBibliography("\(first)|First entry, 2nd edition\n\(second)|Second entry\n")
+        #expect(editor.markdown.contains(Self.cite(first, "[1]")))
+    }
+
+    @Test func aBarSaysWhenOtherFilesAreOutOfDate() throws {
+        defer { cleanUp() }
+        try Data("\(Self.cite("R-2", "[2]"))".utf8).write(to: folder.appendingPathComponent("other.md"))
+        step { project.filesChanged() }
+        #expect(editor.outOfDateBar.isHidden)
+
+        // An entry added above it in another app renumbers it.
+        try writeBibliography("R-0|New\n" + Self.file)
+        #expect(!editor.outOfDateBar.isHidden)
+        #expect(editor.outOfDateBar.label.stringValue == "1 file in the project has out-of-date variables or citations.")
+        // The open document updates itself.
+        #expect(editor.markdown.hasPrefix("See \(Self.cite("R-2", "[3]"))"))
+
+        step { _ = project.updateTags(from: project.tagSources(settings: settings)) }
+        #expect(editor.outOfDateBar.isHidden)
+        #expect(try String(contentsOf: folder.appendingPathComponent("other.md"), encoding: .utf8) == Self.cite("R-2", "[3]"))
     }
 
     @Test func citationPopoverListsEntriesBySection() {

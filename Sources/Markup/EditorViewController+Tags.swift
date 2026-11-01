@@ -99,6 +99,32 @@ extension EditorViewController {
         undoManager?.setActionName("Insert Bibliography")
     }
 
+    // MARK: - Out of date
+
+    /// Shows the bar saying how many of the project's other files have
+    /// out-of-date variables or citations, or hides it if none have.
+    func checkProjectIsUpToDate() {
+        let count = document?.project?.outOfDateFileCount(settings: settings) ?? 0
+        guard count > 0 else {
+            closeOutOfDateBar(nil)
+            return
+        }
+        outOfDateBar.label.stringValue = count == 1 ? "1 file in the project has out-of-date variables or citations."
+            : "\(count) files in the project have out-of-date variables or citations."
+        outOfDateBar.isHidden = false
+        outOfDateBarHeight.constant = NoticeBar.height
+    }
+
+    @objc func updateProjectFromBar(_ sender: Any?) {
+        closeOutOfDateBar(nil)
+        document?.project?.updateVariablesInProject(sender)
+    }
+
+    @objc func closeOutOfDateBar(_ sender: Any?) {
+        outOfDateBar.isHidden = true
+        outOfDateBarHeight.constant = 0
+    }
+
     // MARK: - Citations
 
     /// Insert > Citation: offers the bibliography's entries in a popover at
@@ -116,6 +142,8 @@ extension EditorViewController {
         guard MarkupTag.isValid(name: key) else { return }
         textView.insertText(MarkupTag.citation(key).updated(from: tagSources ?? TagSources()).markdown,
                             replacementRange: textView.selectedRange())
+        // So that editing the entry's text doesn't lose the citation.
+        document?.project?.pinBibliographyKeys([key])
         undoManager?.setActionName("Insert Citation")
         view.window?.makeFirstResponder(textView)
     }
@@ -162,35 +190,34 @@ extension EditorViewController {
     /// Replaces typed or pasted variables and citations that the edit
     /// touched, and with the quick variables setting, `@name@`, with the
     /// variable. Its value is set from the project's files, if there are
-    /// any. In a code block only variables convert, which saving writes
-    /// after a template (`CodeTemplate`), and `@name@` only when the
-    /// project has that variable, since `@` is common in code. Nothing
-    /// converts in inline code, which would show the comments.
+    /// any. In code, a block or inline, only variables convert, which
+    /// saving writes after a template (`CodeTemplate`), and `@name@` only
+    /// when the project has that variable, since `@` is common in code.
     func convertTags(in line: NSRange, after edit: NSRange) {
         let contents = contentsRange(of: line)
         let string = storage.string as NSString
         let text = string.substring(with: contents)
-        let isCode = line.length > 0 && storage.blockStyle(at: line.location) == .code
-        var found = MarkupTag.tags(in: text).filter { !isCode || $0.tag.kind == .variable }.map {
-            (range: NSRange(location: $0.range.lowerBound, length: $0.range.count), tag: $0.tag)
+        let isCodeLine = line.length > 0 && storage.blockStyle(at: line.location) == .code
+        var found = MarkupTag.tags(in: text).map {
+            (range: NSRange(location: $0.range.lowerBound, length: $0.range.count), tag: $0.tag, isQuick: false)
         }
         let sources = tagSources
         if settings.quickVariables {
             for match in Self.quickVariable.matches(in: text, range: NSRange(location: 0, length: contents.length))
             where !found.contains(where: { NSIntersectionRange($0.range, match.range).length > 0 }) {
                 let name = (text as NSString).substring(with: match.range(at: 1))
-                guard !isCode || sources?.variables?[name] != nil else { continue }
-                found.append((match.range, MarkupTag(name: name, value: MarkupTag.unknownValue)))
+                found.append((match.range, MarkupTag(name: name, value: MarkupTag.unknownValue), true))
             }
         }
-        for (match, tag) in found.sorted(by: { $0.range.location > $1.range.location }) {
+        for (match, tag, isQuick) in found.sorted(by: { $0.range.location > $1.range.location }) {
             let range = NSRange(location: contents.location + match.location, length: match.length)
             let touched = edit.length > 0
                 ? NSIntersectionRange(range, edit).length > 0
                 : range.location < edit.location && edit.location < NSMaxRange(range)
-            guard touched, string.rangeOfCharacter(from: CharacterSet(charactersIn: "\u{FFFC}"), range: range).location == NSNotFound,
-                  isCode || (!isInlineCode(range) && !followsUnclosedBacktick(range, in: contents))
+            guard touched, string.rangeOfCharacter(from: CharacterSet(charactersIn: "\u{FFFC}"), range: range).location == NSNotFound
             else { continue }
+            let isCode = isCodeLine || isInlineCode(range) || followsUnclosedBacktick(range, in: contents)
+            guard !isCode || (tag.kind == .variable && (!isQuick || sources?.variables?[tag.name] != nil)) else { continue }
 
             let selection = textView.selectedRange()
             let shown = sources.map { tag.updated(from: $0) } ?? tag

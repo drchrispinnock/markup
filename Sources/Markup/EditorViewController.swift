@@ -103,6 +103,11 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     /// Says that links go to a heading just deleted.
     lazy var deletedHeadingBar = DeletedHeadingBar(target: self)
     var deletedHeadingBarHeight: NSLayoutConstraint!
+    /// Says that files in the project have out-of-date variables or
+    /// citations.
+    lazy var outOfDateBar = NoticeBar(target: self, buttons: [("Update Project", #selector(updateProjectFromBar(_:)))],
+                                      close: #selector(closeOutOfDateBar(_:)))
+    var outOfDateBarHeight: NSLayoutConstraint!
 
     init(plainText: Bool = false) {
         isPlainText = plainText
@@ -175,7 +180,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         let scrollView = makeScrollView()
 
         let contentView = NSView()
-        for view in [headerView, divider, deletedHeadingBar, scrollView] {
+        for view in [headerView, divider, deletedHeadingBar, outOfDateBar, scrollView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             contentView.addSubview(view)
         }
@@ -243,7 +248,11 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             deletedHeadingBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             deletedHeadingBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
 
-            scrollView.topAnchor.constraint(equalTo: deletedHeadingBar.bottomAnchor),
+            outOfDateBar.topAnchor.constraint(equalTo: deletedHeadingBar.bottomAnchor),
+            outOfDateBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            outOfDateBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+
+            scrollView.topAnchor.constraint(equalTo: outOfDateBar.bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
@@ -259,6 +268,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         deletedHeadingBarHeight = deletedHeadingBar.heightAnchor.constraint(equalToConstant: 0)
         deletedHeadingBarHeight.isActive = true
         deletedHeadingBar.isHidden = true
+        outOfDateBarHeight = outOfDateBar.heightAnchor.constraint(equalToConstant: 0)
+        outOfDateBarHeight.isActive = true
+        outOfDateBar.isHidden = true
 
         view = contentView
         NotificationCenter.default.addObserver(self, selector: #selector(projectFilesChanged(_:)),
@@ -285,6 +297,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     override func viewDidAppear() {
         super.viewDidAppear()
         updateTags()
+        checkProjectIsUpToDate()
         scheduleLinkCheck(afterEdit: false)
     }
 
@@ -292,6 +305,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         guard let project = notification.object as? ProjectWindowController, project === document?.project else { return }
         // variables.txt may have changed.
         updateTags()
+        checkProjectIsUpToDate()
         scheduleLinkCheck(afterEdit: false)
     }
 
