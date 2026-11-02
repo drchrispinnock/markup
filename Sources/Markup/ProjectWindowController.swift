@@ -161,15 +161,36 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
         updateTitle()
     }
 
+    /// Shows `document` in a window of its own, taking it out of the pane.
+    func showInOwnWindow(_ document: MarkdownDocument) {
+        if document.windowControllers.isEmpty {
+            if document.project == nil { adopt(document) }
+            if currentDocument === document { clearPane() }
+            document.makeWindowControllers()
+        }
+        document.showWindows()
+        sidebar.select(currentDocument?.fileURL)
+    }
+
+    /// Stops showing the current document, showing the placeholder instead.
+    private func clearPane() {
+        currentDocument?.editorIfLoaded?.removeFromParent()
+        currentDocument?.editorIfLoaded?.view.removeFromSuperview()
+        currentDocument = nil
+        placeholder.isHidden = false
+        updateTitle()
+    }
+
+    /// Stops keeping `document`, which has closed (its own window, say).
+    func documentClosed(_ document: MarkdownDocument) {
+        if currentDocument === document { clearPane() }
+        documents.removeAll { $0 === document }
+    }
+
     /// Closes `document`, whose file has gone, without asking about unsaved
     /// changes, and stops showing it.
     func forget(_ document: MarkdownDocument) {
-        if currentDocument === document {
-            document.editorIfLoaded?.removeFromParent()
-            document.editorIfLoaded?.view.removeFromSuperview()
-            currentDocument = nil
-            placeholder.isHidden = false
-        }
+        if currentDocument === document { clearPane() }
         documents.removeAll { $0 === document }
         document.project = nil
         if document.windowControllers.isEmpty { document.close() }
@@ -226,9 +247,9 @@ final class ProjectWindowController: NSWindowController, NSWindowDelegate, NSToo
     }
 
     /// Asks about each file with unsaved changes in turn, showing it, before
-    /// the window closes.
+    /// the window closes. Those in windows of their own stay open.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        documentsToReview = documents.filter(\.isDocumentEdited)
+        documentsToReview = documents.filter { $0.isDocumentEdited && $0.windowControllers.isEmpty }
         guard documentsToReview.isEmpty else {
             reviewNextDocument()
             return false

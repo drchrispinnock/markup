@@ -1,10 +1,25 @@
 import AppKit
 
-/// The sidebar's menu (`ProjectSidebarController.menu`): New File, New
-/// Folder, Duplicate, Rename and Delete, for the item clicked, which each menu item
+/// The sidebar's menu (`ProjectSidebarController.menu`): Open in New
+/// Window, New File, New Folder, Duplicate, Rename and Delete, for the item clicked, which each menu item
 /// carries as its `representedObject`. New items go in the folder clicked,
 /// or the folder of the file clicked. Delete moves to the Trash.
 extension ProjectWindowController {
+    /// Sidebar > Open in New Window: opens the file in a window of its own,
+    /// taking it out of this window's pane if it's shown there. It stays one
+    /// of the window's documents, for its variables and cross links.
+    @objc func openInNewWindow(_ sender: Any?) {
+        guard let url = clickedURL(sender), !Self.isFolder(url) else { return }
+        NSDocumentController.shared.openDocument(withContentsOf: url, display: false) { [weak self] document, _, error in
+            guard let self else { return }
+            if let document = document as? MarkdownDocument {
+                showInOwnWindow(document)
+            } else if let error {
+                presentError(error, modalFor: window!, delegate: nil, didPresent: nil, contextInfo: nil)
+            }
+        }
+    }
+
     /// Sidebar > New File…: asks for a name, then makes the file and opens it.
     @objc func newFile(_ sender: Any?) {
         let folder = Self.folder(for: clickedURL(sender) ?? root)

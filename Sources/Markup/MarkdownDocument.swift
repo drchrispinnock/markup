@@ -47,6 +47,13 @@ final class MarkdownDocument: NSDocument {
         addWindowController(controller)
     }
 
+    /// Its project stops keeping it, as when its own window closes.
+    override func close() {
+        let project = self.project
+        super.close()
+        project?.documentClosed(self)
+    }
+
     /// A document shown in a project window is shown there, not given a
     /// window of its own, as when File > Open picks it again.
     override func showWindows() {

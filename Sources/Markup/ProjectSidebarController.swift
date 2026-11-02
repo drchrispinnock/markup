@@ -107,12 +107,14 @@ final class ProjectSidebarController: NSViewController, NSOutlineViewDataSource,
         }
     }
 
-    /// The menu for a right click: New File, New Folder, Duplicate, Rename
-    /// and Delete, sent to `menuTarget` (`ProjectWindowController+Files`), each
+    /// The menu for a right click: Open in New Window, New File, New Folder,
+    /// Duplicate, Rename and Delete, sent to `menuTarget` (`ProjectWindowController+Files`), each
     /// carrying the item clicked.
     private func makeMenu() -> NSMenu {
         let menu = NSMenu()
         menu.delegate = self
+        menu.addItem(withTitle: "Open in New Window", action: #selector(ProjectWindowController.openInNewWindow(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
         menu.addItem(withTitle: "New File…", action: #selector(ProjectWindowController.newFile(_:)), keyEquivalent: "")
         menu.addItem(withTitle: "New Folder…", action: #selector(ProjectWindowController.newFolder(_:)), keyEquivalent: "")
         menu.addItem(.separator())

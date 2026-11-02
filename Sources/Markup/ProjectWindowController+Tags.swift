@@ -107,6 +107,9 @@ extension ProjectWindowController: NSMenuItemValidation {
         case #selector(duplicateItem(_:)), #selector(renameItem(_:)), #selector(deleteItem(_:)):
             // Not the project folder itself.
             return (menuItem.representedObject as? URL).map { $0.standardizedFileURL != root } ?? false
+        case #selector(openInNewWindow(_:)):
+            // Files only.
+            return (menuItem.representedObject as? URL).map { !Self.isFolder($0) } ?? false
         default:
             return true
         }

@@ -2002,7 +2002,7 @@ import Testing
 
     @Test func theMenuIsForTheItemClicked() throws {
         let menu = try #require(project.sidebar.outlineView.menu)
-        #expect(menu.items.filter { !$0.isSeparatorItem }.map(\.title) == ["New File…", "New Folder…", "Duplicate", "Rename…", "Delete"])
+        #expect(menu.items.filter { !$0.isSeparatorItem }.map(\.title) == ["Open in New Window", "New File…", "New Folder…", "Duplicate", "Rename…", "Delete"])
         // Below the rows, it is for the project folder, which can't be
         // duplicated or deleted.
         project.sidebar.menuNeedsUpdate(menu)
@@ -2012,6 +2012,11 @@ import Testing
         #expect(!project.validateMenuItem(duplicate))
         duplicate.representedObject = folder.appendingPathComponent("a.md")
         #expect(project.validateMenuItem(duplicate))
+        // Only a file opens in a new window.
+        let open = menu.items[0]
+        #expect(!project.validateMenuItem(open))
+        open.representedObject = folder.appendingPathComponent("a.md")
+        #expect(project.validateMenuItem(open))
     }
 
     @Test func newFilesAndFoldersGoInTheFolderClicked() throws {
@@ -2075,6 +2080,27 @@ import Testing
         #expect(project.documents.map { $0 === b } == [true])
         #expect(project.currentDocument == nil)
         #expect(project.sidebar.node(for: folder.appendingPathComponent("notes")) == nil)
+    }
+
+    @Test func openingInANewWindowTakesTheFileOutOfThePane() throws {
+        let a = try document("a.md"), b = try document("b.md")
+        project.show(b)
+        project.show(a)
+        project.showInOwnWindow(a)
+        #expect(a.windowControllers.first is DocumentWindowController)
+        #expect(a.editor.view.window === a.windowControllers.first?.window)
+        #expect(project.currentDocument == nil && project.window?.title == folder.lastPathComponent)
+        // Still the project's, for variables and cross links.
+        #expect(a.project === project && project.documents.contains { $0 === a })
+        // Choosing it in the sidebar brings its window forward.
+        project.show(a)
+        #expect(project.currentDocument == nil)
+        // Edited, it isn't asked about when the project closes.
+        step(a) { a.editor.textView.insertText("!", replacementRange: NSRange(location: 0, length: 0)) }
+        #expect(project.windowShouldClose(project.window!))
+        a.close()
+        #expect(!project.documents.contains { $0 === a })
+        #expect(project.documents.contains { $0 === b })
     }
 
     @Test func showsOneFileAtATimeAndKeepsTheOthersEdits() throws {
