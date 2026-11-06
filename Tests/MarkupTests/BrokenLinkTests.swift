@@ -235,4 +235,48 @@ import Testing
         editor.checkLinks()
         #expect(bar.isHidden && brokenTexts == ["up"])
     }
+
+    // MARK: - Following links
+
+    @Test func linksGoWhereTheCheckLooks() {
+        defer { cleanUp() }
+        #expect(editor.linkTarget(for: "#here") == .heading(file: nil, id: "here"))
+        #expect(editor.linkTarget(for: "part/other.md#theirs") == .heading(file: folder.appendingPathComponent("part/other.md"), id: "theirs"))
+        #expect(editor.linkTarget(for: "this.md#mine") == .heading(file: nil, id: "mine"))
+        // As Leanpub has it, #id may be in another file.
+        #expect(editor.linkTarget(for: "#theirs") == .heading(file: folder.appendingPathComponent("part/other.md"), id: "theirs"))
+        #expect(editor.linkTarget(for: "https://a.com/x#here") == .url(URL(string: "https://a.com/x#here")!))
+        #expect(editor.linkTarget(for: "mailto:a@b.com") == .url(URL(string: "mailto:a@b.com")!))
+        #expect(editor.linkTarget(for: "docs/My%20notes.pdf") == .file(folder.appendingPathComponent("docs/My notes.pdf")))
+    }
+
+    @Test func followingAWebLinkOpensItOutsideMarkup() {
+        defer { cleanUp() }
+        var opened: [URL] = []
+        editor.openExternally = { opened.append($0) }
+        step { editor.load(markdown: "See [the site](https://example.com) and [a file](notes.pdf)") }
+        let string = textView.string as NSString
+        editor.followLink(at: string.range(of: "site").location)
+        editor.followLink(at: string.range(of: "file").location)
+        #expect(opened == [URL(string: "https://example.com")!, folder.appendingPathComponent("notes.pdf")])
+    }
+
+    @Test func followingAHeadingLinkGoesToTheHeading() {
+        defer { cleanUp() }
+        let string = textView.string as NSString
+        editor.followLink(at: string.range(of: "up").location)
+        #expect(textView.selectedRange() == NSRange(location: string.range(of: "Here").location, length: 0))
+        #expect(!editor.selectHeading(id: "nowhere"))
+    }
+
+    @Test func theLinkMenuChangesTheWholeLink() {
+        defer { cleanUp() }
+        let string = textView.string as NSString
+        let up = string.range(of: "up")
+        #expect(editor.linkRange(at: up.location + 1) == up)
+        let item = NSMenuItem()
+        item.representedObject = NSValue(range: up)
+        step { editor.removeClickedLink(item) }
+        #expect(editor.markdown.hasPrefix("Intro up and [there](part/other.md#theirs)"))
+    }
 }

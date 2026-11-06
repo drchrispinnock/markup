@@ -90,6 +90,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         }
     }
 
+    /// Opens a link that goes outside Markup: a web address, or a file
+    /// another app opens. Tests replace it.
+    var openExternally: (URL) -> Void = { NSWorkspace.shared.open($0) }
+
     /// The document being edited. It owns this controller.
     weak var document: MarkdownDocument?
 
@@ -284,6 +288,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         textView.delegate = self
         storage.delegate = self
         textView.markerClickHandler = { [unowned self] index in toggleCheckbox(at: index) }
+        textView.linkClickHandler = { [unowned self] index in followLink(at: index) }
         textView.plainTextForCopy = { [unowned self] range in self.plainText(for: range) }
         textView.pasteHandler = { [unowned self] text in self.paste(text) }
     }

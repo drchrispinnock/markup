@@ -1,13 +1,17 @@
 import AppKit
 
-/// The editor's text view. It passes clicks on list markers to the
-/// controller, and lets the controller decide what copied text looks like
+/// The editor's text view. It passes clicks on list markers and links to
+/// the controller, and lets the controller decide what copied text looks like
 /// and how pasted text goes in.
 @MainActor
 final class EditorTextView: NSTextView {
     /// Called with the character index of a clicked list marker. Returns true
     /// if it handled the click.
     var markerClickHandler: ((Int) -> Bool)?
+
+    /// Called with the character index of a clicked link, on a click that
+    /// isn't a drag, has no modifier keys and isn't a double click.
+    var linkClickHandler: ((Int) -> Void)?
 
     /// The plain text to put on the pasteboard for a range of the document.
     var plainTextForCopy: ((NSRange) -> String)?
@@ -80,18 +84,46 @@ final class EditorTextView: NSTextView {
         NotificationCenter.default.post(name: .markupCheckingDefaultsChanged, object: checkingDefaults)
     }
 
-    // MARK: - List markers
+    // MARK: - List markers and links
 
     override func mouseDown(with event: NSEvent) {
-        if let index = markerIndex(at: convert(event.locationInWindow, from: nil)),
-           markerClickHandler?(index) == true {
+        let point = convert(event.locationInWindow, from: nil)
+        if let index = markerIndex(at: point), markerClickHandler?(index) == true {
             return
+        }
+        if let linkClickHandler, event.clickCount == 1,
+           event.modifierFlags.intersection([.shift, .command, .option, .control]).isEmpty,
+           let index = linkIndex(at: point) {
+            // A click follows the link; a drag selects, as usual.
+            guard let next = window?.nextEvent(matching: [.leftMouseUp, .leftMouseDragged]) else { return }
+            if next.type == .leftMouseUp {
+                linkClickHandler(index)
+                return
+            }
         }
         super.mouseDown(with: event)
     }
 
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        if linkClickHandler != nil, linkIndex(at: convert(event.locationInWindow, from: nil)) != nil {
+            NSCursor.pointingHand.set()
+        }
+    }
+
     /// The index of the list marker drawn at `point`, in view coordinates.
     func markerIndex(at point: NSPoint) -> Int? {
+        index(at: point, with: .listMarker)
+    }
+
+    /// The index of the link character drawn at `point`, in view
+    /// coordinates.
+    func linkIndex(at point: NSPoint) -> Int? {
+        index(at: point, with: .markdownLink)
+    }
+
+    /// The index of the character drawn at `point`, if it has `key`.
+    private func index(at point: NSPoint, with key: NSAttributedString.Key) -> Int? {
         guard let layoutManager, let textContainer, let textStorage else { return nil }
         let containerPoint = NSPoint(x: point.x - textContainerOrigin.x, y: point.y - textContainerOrigin.y)
         let glyph = layoutManager.glyphIndex(for: containerPoint, in: textContainer, fractionOfDistanceThroughGlyph: nil)
@@ -99,7 +131,7 @@ final class EditorTextView: NSTextView {
         let glyphRect = layoutManager.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: textContainer)
         guard glyphRect.contains(containerPoint) else { return nil }
         let index = layoutManager.characterIndexForGlyph(at: glyph)
-        return textStorage.attribute(.listMarker, at: index, effectiveRange: nil) != nil ? index : nil
+        return textStorage.attribute(key, at: index, effectiveRange: nil) != nil ? index : nil
     }
 
     /// The type a plain text view asks to write its text as: the old name for
