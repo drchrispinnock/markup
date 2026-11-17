@@ -92,9 +92,11 @@ public struct CodeFence: Hashable, Sendable {
 ///   (Pandoc's rule, so a file starting with a horizontal rule isn't taken
 ///   for it). YAML's comments start with "#", so it can't be read as
 ///   Markdown.
-/// - A heading's ID (`HeadingAnchor`) is `{#id: x}` or `{#x}` on the line
-///   above it, or `{#x}` at its end, but not both: a heading with one at its
-///   end leaves the line above as text.
+/// - A heading's ID (`HeadingAnchor`) is `{id: x}`, `{#id: x}` or `{#x}` on
+///   the line above it, or `{#x}` at its end, but not both: a heading with
+///   one at its end leaves a line above with an ID as text. The line above
+///   can hold other attributes, such as `{id: x, sample: true}`, or only
+///   them; two such lines are read as one.
 ///
 /// Text that would otherwise read back as one of these is escaped with a
 /// backslash, so it survives a save: a paragraph "# not a heading" is written
@@ -144,17 +146,14 @@ public enum MarkdownCodec {
                 index += rows
                 continue
             }
-            if HeadingAnchor(line: raw[index]) != nil, index + 1 < raw.count,
-               var heading = headingLine(raw[index + 1]), heading.anchor == nil {
-                heading.anchor = HeadingAnchor(line: raw[index])
+            if let (heading, count) = headingWithAttributes(at: index, in: raw) {
                 lists.end()
                 lines.append(heading)
-                index += 2
+                index += count
                 continue
             }
             let text = raw[index]
-            if text.first == "\\", HeadingAnchor(line: text.drop(while: { $0 == "\\" })) != nil, index + 1 < raw.count,
-               attachesAnchorAbove(raw[index + 1]) {
+            if text.first == "\\", attaches(text.drop(while: { $0 == "\\" }), above: index + 1, in: raw) {
                 lists.end()
                 lines.append(Line(style: .paragraph, text: String(text.dropFirst())))
             } else if text.first == "\\", let fence = CodeFence(line: text.drop(while: { $0 == "\\" })),
@@ -199,7 +198,7 @@ public enum MarkdownCodec {
         while index < lines.count {
             guard lines[index].style == .code else {
                 let line = lines[index]
-                if line.isHeading, let anchor = line.anchor, anchor.form != .attribute {
+                if line.isHeading, let anchor = line.anchor, writesLineAbove(anchor) {
                     written.append((anchor.markdown, .other))
                 }
                 if let item = line.list {
@@ -260,8 +259,7 @@ public enum MarkdownCodec {
         // as the ID of a heading below, working up so each sees the lines
         // below as they will be written.
         for index in written.indices.reversed() where written[index].kind == .paragraph {
-            if HeadingAnchor(line: texts[index].drop(while: { $0 == "\\" })) != nil, index + 1 < texts.count,
-               attachesAnchorAbove(Substring(texts[index + 1])) {
+            if attaches(texts[index].drop(while: { $0 == "\\" }), above: index + 1, in: texts.map { Substring($0) }) {
                 texts[index] = "\\" + texts[index]
             } else if let fence = CodeFence(line: texts[index].drop(while: { $0 == "\\" })),
                closingFence(of: fence, in: texts.map { Substring($0) }, after: index) != nil {
@@ -469,11 +467,40 @@ public enum MarkdownCodec {
         headingLine(raw) != nil || quotePrefixLength(of: raw) != nil
     }
 
-    /// Whether `raw` is a heading that takes an ID from the line above: one
-    /// without one at its end.
-    private static func attachesAnchorAbove(_ raw: Substring) -> Bool {
-        guard let line = headingLine(raw) else { return false }
-        return line.anchor == nil
+    /// Whether `line`, just above line `index` of `raw`, would be read as
+    /// the attributes of a heading below it.
+    private static func attaches(_ line: Substring, above index: Int, in raw: [Substring]) -> Bool {
+        headingWithAttributes(at: 0, in: [line] + raw[min(index, raw.count)..<min(index + 2, raw.count)]) != nil
+    }
+
+    /// The heading at line `index` of `raw` with the attributes on the line
+    /// above it, or the two lines above it, and how many lines it takes. Two
+    /// lines (`{#id: x}` then `{sample: true}`, where Markua would see only
+    /// the second) are read as one, provided only one has an ID, and so are
+    /// written as one. A heading with an ID at its end takes other
+    /// attributes from the line above, and the ID goes there.
+    private static func headingWithAttributes(at index: Int, in raw: [Substring]) -> (Line, Int)? {
+        guard var above = HeadingAnchor(line: raw[index]), index + 1 < raw.count else { return nil }
+        var count = 2
+        if let second = HeadingAnchor(line: raw[index + 1]), index + 2 < raw.count, headingLine(raw[index + 2]) != nil,
+           !(above.hasID && second.hasID) {
+            above = above.adding(second)
+            count = 3
+        }
+        guard var heading = headingLine(raw[index + count - 1]) else { return nil }
+        if let trailing = heading.anchor {
+            guard !above.hasID else { return nil }
+            heading.anchor = trailing.adding(above)
+        } else {
+            heading.anchor = above
+        }
+        return (heading, count)
+    }
+
+    /// Whether a heading's `anchor` is written on the line above it, rather
+    /// than at its end or not at all.
+    private static func writesLineAbove(_ anchor: HeadingAnchor) -> Bool {
+        anchor.form == .attribute ? !anchor.others.isEmpty : anchor.hasID || !anchor.others.isEmpty
     }
 
     /// The heading that `raw` is, or nil. Its text loses the ID at its end,
@@ -501,7 +528,7 @@ public enum MarkdownCodec {
         }
         let marker = String(repeating: "#", count: line.style.rawValue)
         // Text ending as an ID would be read as one, unless an ID follows.
-        if let anchor = line.anchor, anchor.form == .attribute {
+        if let anchor = line.anchor, anchor.form == .attribute, anchor.others.isEmpty, anchor.hasID {
             return marker + " " + (line.text.isEmpty ? "" : line.text + " ") + anchor.markdown
         }
         let text = HeadingAnchor.trailingNeedsEscape(line.text) ? HeadingAnchor.escapingTrailing(line.text) : line.text

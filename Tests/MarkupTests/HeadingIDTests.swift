@@ -114,12 +114,12 @@ import Testing
     @Test func savingAddsMissingIDsAndKeepsTheOthers() {
         defer { cleanUp() }
         editor.load(markdown: "# Setting up my Dapp\nText\n## Other {#x}\n### Setting again")
-        addIDs(taken: ["170_dapps_1_Setting"])
+        addIDs(taken: ["ID170_dapps_1_Setting"])
         #expect(editor.markdown
-            == "{#id: 170_dapps_1_Setting_2}\n# Setting up my Dapp\nText\n## Other {#x}\n{#id: 170_dapps_3_Setting}\n### Setting again")
+            == "{id: ID170_dapps_1_Setting_2}\n# Setting up my Dapp\nText\n## Other {#x}\n{id: ID170_dapps_3_Setting}\n### Setting again")
         #expect(textView.string == "Setting up my Dapp\nText\nOther\nSetting again")
-        addIDs(taken: ["170_dapps_1_Setting"])
-        #expect(editor.markdown.hasPrefix("{#id: 170_dapps_1_Setting_2}\n#"))
+        addIDs(taken: ["ID170_dapps_1_Setting"])
+        #expect(editor.markdown.hasPrefix("{id: ID170_dapps_1_Setting_2}\n#"))
     }
 
     @Test func newIDsFollowTheSettings() {
@@ -136,7 +136,7 @@ import Testing
         editor.setShowingMarkdown(true)
         step { textView.insertText("Intro\n# Title\n```\n# code\n```", replacementRange: textView.selectedRange()) }
         step { addIDs() }
-        #expect(textView.string == "Intro\n{#id: 170_dapps_1_Title}\n# Title\n```\n# code\n```")
+        #expect(textView.string == "Intro\n{id: ID170_dapps_1_Title}\n# Title\n```\n# code\n```")
         document.undoManager?.undo()
         #expect(textView.string == "Intro\n# Title\n```\n# code\n```")
     }
@@ -149,13 +149,13 @@ import Testing
         #expect(editor.markdown == "# Title")
         editor.settings.addsHeadingIDs = true
         document.addMissingHeadingIDs(fileName: "notes.md")
-        #expect(editor.markdown == "{#id: notes_1_Title}\n# Title")
+        #expect(editor.markdown == "{id: notes_1_Title}\n# Title")
     }
 
     @Test func settingsDefaultToIDLinesFromTheFileLevelAndWord() {
         defer { cleanUp() }
         let settings = editor.settings
-        #expect(settings.addsHeadingIDs && settings.headingIDForm == .idLine && settings.headingIDScheme == .fileLevelWord)
+        #expect(settings.addsHeadingIDs && settings.headingIDForm == .idAttribute && settings.headingIDScheme == .fileLevelWord)
         settings.headingIDForm = .braceLine
         settings.headingIDScheme = .hash
         settings.addsHeadingIDs = false
@@ -199,7 +199,7 @@ import Testing
         project.show(document)
         #expect(project.markdownFiles().map(\.url.lastPathComponent) == ["sub/one.md", "two.md"].map { ($0 as NSString).lastPathComponent })
         document.addMissingHeadingIDs(fileName: "two.md")
-        #expect(document.editor.markdown == "{#id: two_1_Intro_2}\n# Intro\n## Intro {#two_2_Intro}")
+        #expect(document.editor.markdown == "{id: two_1_Intro_2}\n# Intro\n## Intro {#two_2_Intro}")
     }
 }
 
@@ -283,7 +283,7 @@ import Testing
         defer { cleanUp() }
         settings.addsHeadingIDs = false
         link(to: "Mine", selecting: NSRange(location: 0, length: 5))
-        #expect(editor.markdown == "[Intro](#this_1_Mine)\n{#id: this_1_Mine}\n# Mine\nText\n## Here {#here}")
+        #expect(editor.markdown == "[Intro](#this_1_Mine)\n{id: this_1_Mine}\n# Mine\nText\n## Here {#here}")
     }
 
     @Test func withNoSelectionInsertsTheHeadingsTitle() {
@@ -306,7 +306,7 @@ import Testing
         #expect(editor.markdown.hasPrefix("[Intro](#other_2_Setting)\n"))
         let other = project.documents.first { $0 !== document }!
         #expect(other.isDocumentEdited)
-        #expect(other.currentMarkdown == "{#id: theirs}\n# Theirs\n{#id: other_2_Setting}\n## *Setting* up")
+        #expect(other.currentMarkdown == "{#id: theirs}\n# Theirs\n{id: other_2_Setting}\n## *Setting* up")
         #expect(project.currentDocument === document)
     }
 
@@ -318,7 +318,7 @@ import Testing
         link(to: "Sub", selecting: NSRange(location: 0, length: 5))
         #expect(editor.markdown.hasPrefix("[Intro](#other_2_Sub)\n"))
         let other = project.documents.first { $0 !== document }!
-        #expect(other.currentMarkdown == "\n{#id: other_2_Sub}\n## Sub\nText")
+        #expect(other.currentMarkdown == "\n{id: other_2_Sub}\n## Sub\nText")
     }
 
     @Test func relativePaths() {

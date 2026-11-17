@@ -1,13 +1,14 @@
 import AppKit
 
 /// Leanpub's divisions of a book, each a line of its own: `{mainmatter}`
-/// (the chapters) and `{backmatter}` (appendices and such). Markua no
-/// longer has `{frontmatter}`, so that stays text. The formatted view
+/// (the chapters) and `{backmatter}` (appendices and such), and its page
+/// break, `{pagebreak}`. Markua no longer has `{frontmatter}`, so that
+/// stays text. The formatted view
 /// shows one as a rule across the text, labelled, carrying its Markdown as
 /// a comment does (`.markdownComment`), so that saving and copying write it
 /// back.
 enum LeanpubDivision: String, CaseIterable {
-    case mainmatter, backmatter
+    case mainmatter, backmatter, pagebreak
 
     /// The division `line` is, written exactly.
     init?(line: some StringProtocol) {
@@ -22,6 +23,14 @@ enum LeanpubDivision: String, CaseIterable {
         switch self {
         case .mainmatter: "Main Matter"
         case .backmatter: "Back Matter"
+        case .pagebreak: "Page Break"
+        }
+    }
+
+    private var toolTip: String {
+        switch self {
+        case .mainmatter, .backmatter: "Leanpub: \(title.lowercased()) starts here"
+        case .pagebreak: "Leanpub: a new page starts here"
         }
     }
 
@@ -34,7 +43,7 @@ enum LeanpubDivision: String, CaseIterable {
         var attributes = attributes
         attributes[.attachment] = attachment
         attributes[.markdownComment] = markdown
-        attributes[.toolTip] = "Leanpub: \(title.lowercased()) starts here"
+        attributes[.toolTip] = toolTip
         return NSAttributedString(string: "\u{FFFC}", attributes: attributes)
     }
 }

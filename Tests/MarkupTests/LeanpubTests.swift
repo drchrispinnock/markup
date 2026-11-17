@@ -3,7 +3,7 @@ import MarkupCore
 import Testing
 @testable import Markup
 
-/// Leanpub's {mainmatter} and {backmatter} lines.
+/// Leanpub's {mainmatter}, {backmatter} and {pagebreak} lines.
 @MainActor
 @Suite struct LeanpubDivisionTests {
     let document: MarkdownDocument
@@ -78,6 +78,17 @@ import Testing
         step { textView.insertNewline(nil) }
         step { editor.insertLeanpubDivision(menuItem(.mainmatter)) }
         #expect(editor.markdown == "Preface\n# One\n{backmatter}\n{mainmatter}")
+    }
+
+    @Test func aPageBreakIsADivisionToo() {
+        editor.load(markdown: "One\n{pagebreak}\nTwo")
+        #expect(textView.string == "One\n\u{FFFC}\nTwo")
+        #expect(isDivision(at: 4))
+        #expect(editor.markdown == "One\n{pagebreak}\nTwo")
+        textView.setSelectedRange(NSRange(location: 3, length: 0))
+        step { editor.insertLeanpubDivision(menuItem(.pagebreak)) }
+        #expect(editor.markdown == "One\n{pagebreak}\n{pagebreak}\nTwo")
+        #expect(document.undoManager?.undoActionName == "Insert Page Break")
     }
 
     @Test func typedItBecomesTheDivision() {

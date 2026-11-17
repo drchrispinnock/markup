@@ -198,6 +198,8 @@ extension EditorViewController: NSMenuItemValidation {
             return !isShowingMarkdown
         case #selector(insertVariable(_:)), #selector(insertCitation(_:)), #selector(insertLeanpubDivision(_:)):
             return !isShowingMarkdown && !isPlainText
+        case #selector(fixHeadingIDs(_:)):
+            return !isPlainText
         case #selector(insertBibliography(_:)):
             return !isShowingMarkdown && !isPlainText && tagSources?.bibliography != nil
         case #selector(toggleSubscript(_:)):

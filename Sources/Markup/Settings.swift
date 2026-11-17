@@ -44,10 +44,14 @@ final class Settings {
         set { defaults.set(newValue, forKey: Self.addsHeadingIDsKey) }
     }
 
-    /// How new heading IDs are written: `{#id: x}` on the line above unless
-    /// changed.
+    /// How new heading IDs are written: `{id: x}` on the line above unless
+    /// changed. `{#id: x}`, which Markup once wrote and Markua doesn't
+    /// accept, is read as `{id: x}`.
     var headingIDForm: HeadingAnchor.Form {
-        get { defaults.string(forKey: Self.headingIDFormKey).flatMap(HeadingAnchor.Form.init) ?? .idLine }
+        get {
+            let form = defaults.string(forKey: Self.headingIDFormKey).flatMap(HeadingAnchor.Form.init) ?? .idAttribute
+            return form == .idLine ? .idAttribute : form
+        }
         set { defaults.set(newValue.rawValue, forKey: Self.headingIDFormKey) }
     }
 

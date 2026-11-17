@@ -49,12 +49,13 @@ extension EditorViewController {
                 location = NSMaxRange(line)
                 continue
             }
-            // The run of lines with this ID.
+            // The run of lines with this ID (or with no ID, these attributes).
+            func isSame(_ other: HeadingAnchor?) -> Bool { anchor.hasID ? other?.id == anchor.id : other == anchor }
             var run = [line]
-            while run[0].location > 0, headingAnchor(in: lineRange(at: run[0].location - 1))?.id == anchor.id {
+            while run[0].location > 0, isSame(headingAnchor(in: lineRange(at: run[0].location - 1))) {
                 run.insert(lineRange(at: run[0].location - 1), at: 0)
             }
-            while NSMaxRange(run.last!) < storage.length, headingAnchor(in: lineRange(at: NSMaxRange(run.last!)))?.id == anchor.id {
+            while NSMaxRange(run.last!) < storage.length, isSame(headingAnchor(in: lineRange(at: NSMaxRange(run.last!)))) {
                 run.append(lineRange(at: NSMaxRange(run.last!)))
             }
             if run.count > 1 {
@@ -80,9 +81,9 @@ extension EditorViewController {
         return HeadingAnchor(line: (storage.string as NSString).substring(with: contentsRange(of: line)))
     }
 
-    /// Makes the ID on `idLine` the ID of the heading below, removing the
-    /// line. Returns false, changing nothing, unless `idLine` holds only an
-    /// ID and the next line is a heading.
+    /// Makes the ID (or other attributes) on `idLine` the heading's below,
+    /// removing the line. Returns false, changing nothing, unless `idLine`
+    /// holds only attributes and the next line is a heading.
     func convertAnchorLine(_ idLine: NSRange) -> Bool {
         guard let anchor = anchorLine(idLine), NSMaxRange(idLine) < storage.length,
               isHeadingLine(lineRange(at: NSMaxRange(idLine))) else { return false }
@@ -107,18 +108,122 @@ extension EditorViewController {
         return true
     }
 
-    /// Gives `heading` `anchor`, unless another heading, here or in the
-    /// project's other files, has its ID, as when a heading is copied rather
-    /// than moved. The copy is left without one, to get a new one when saved.
+    /// Gives `heading` `anchor`, added to the attributes it has, unless
+    /// another heading, here or in the project's other files, has its ID,
+    /// as when a heading is copied rather than moved. The copy is left
+    /// without one, to get a new one when saved.
     private func give(_ anchor: HeadingAnchor, toHeading heading: NSRange) {
-        let others = lineRanges(in: NSRange(location: 0, length: storage.length)).filter { $0 != heading && isTitledHeading($0) }
-        guard !others.contains(where: { headingAnchor(in: $0)?.id == anchor.id }) else { return }
-        let own = document?.fileURL?.standardizedFileURL
-        if let project = document?.project,
-           project.headingIDs().contains(where: { $0.url != own && $0.ids.contains(anchor.id) }) { return }
+        if anchor.hasID {
+            let others = lineRanges(in: NSRange(location: 0, length: storage.length))
+                .filter { $0 != heading && isTitledHeading($0) }
+            guard !others.contains(where: { headingAnchor(in: $0)?.id == anchor.id }) else { return }
+            let own = document?.fileURL?.standardizedFileURL
+            if let project = document?.project,
+               project.headingIDs().contains(where: { $0.url != own && $0.ids.contains(anchor.id) }) { return }
+        }
+        let anchor = headingAnchor(in: heading)?.adding(anchor) ?? anchor
         changeAttributes(in: heading) {
             storage.addAttribute(.headingAnchor, value: anchor, range: heading)
         }
+    }
+
+    // MARK: - Sample
+
+    /// Adds Include in Sample, ticked if it is, to the top of `menu` when
+    /// the character at `index` is in a heading.
+    func addSampleItem(to menu: NSMenu, at index: Int) {
+        guard !isPlainText, index <= storage.length else { return }
+        let line = lineRange(at: min(index, max(storage.length - 1, 0)))
+        guard isTitledHeading(line) else { return }
+        let item = NSMenuItem(title: "Include in Sample", action: #selector(toggleSample(_:)), keyEquivalent: "")
+        item.target = self
+        item.representedObject = NSValue(range: line)
+        item.state = headingAnchor(in: line)?.isSample == true ? .on : .off
+        item.toolTip = "Leanpub puts this section in the book's sample ({sample: true} above the heading)"
+        menu.insertItem(.separator(), at: 0)
+        menu.insertItem(item, at: 0)
+    }
+
+    /// Include in Sample: puts `sample: true` on the heading's ID line, or
+    /// takes it off.
+    @objc func toggleSample(_ sender: NSMenuItem) {
+        guard let line = (sender.representedObject as? NSValue)?.rangeValue, NSMaxRange(line) <= storage.length else { return }
+        setSample(headingAnchor(in: line)?.isSample != true, inHeading: line)
+    }
+
+    /// Puts `sample: true` on the attributes of the heading on `line`, or
+    /// takes it off, undoably. A heading with no ID gets the attribute
+    /// alone, and saving adds the ID to its line.
+    func setSample(_ isSample: Bool, inHeading line: NSRange) {
+        var anchor = headingAnchor(in: line) ?? HeadingAnchor(id: "", form: settings.headingIDForm)
+        anchor.isSample = isSample
+        changeAttributes(in: line) {
+            if anchor.hasID || !anchor.others.isEmpty {
+                storage.addAttribute(.headingAnchor, value: anchor, range: line)
+            } else {
+                storage.removeAttribute(.headingAnchor, range: line)
+            }
+        }
+        undoManager?.setActionName(isSample ? "Include in Sample" : "Leave Out of Sample")
+        updateForSelection()
+    }
+
+    // MARK: - Fixing IDs for Leanpub
+
+    /// Insert > Fix Heading IDs for Leanpub: in a project, every file's; in
+    /// a document of its own, its own.
+    @objc func fixHeadingIDs(_ sender: Any?) {
+        if let project = document?.project {
+            project.fixHeadingIDsInProject(sender)
+            return
+        }
+        guard !isPlainText else { return }
+        let ids = isShowingMarkdown ? MarkdownCodec.headingIDs(inMarkdown: storage.string) : Set(currentHeadingTitles().keys)
+        let renames = HeadingIDMigration.renames(for: ids)
+        let changed = migrateHeadingIDs(renames: renames)
+        guard let window = view.window else { return }
+        HeadingIDMigration.alert(renamed: renames.count, files: changed ? 1 : 0, failed: []).beginSheetModal(for: window)
+    }
+
+    /// Renames the headings' IDs and the links to them as `renames` says,
+    /// and writes `{#id: x}` as `{id: x}`, as one edit. Returns whether it
+    /// changed anything.
+    @discardableResult
+    func migrateHeadingIDs(renames: [String: String]) -> Bool {
+        guard !isPlainText else { return false }
+        if isShowingMarkdown {
+            let migrated = HeadingIDMigration.migrating(markdown: storage.string, renames: renames)
+            guard migrated != storage.string else { return false }
+            replaceChangedText(with: migrated)
+            undoManager?.setActionName("Fix Heading IDs")
+            return true
+        }
+        var anchors: [(NSRange, HeadingAnchor)] = []
+        var links: [(NSRange, String)] = []
+        let all = NSRange(location: 0, length: storage.length)
+        storage.enumerateAttribute(.headingAnchor, in: all) { value, run, _ in
+            if let anchor = value as? HeadingAnchor, let new = HeadingIDMigration.migrated(anchor, renames: renames) {
+                anchors.append((run, new))
+            }
+        }
+        storage.enumerateAttribute(.markdownLink, in: all) { value, run, _ in
+            if let destination = value as? String,
+               let new = HeadingIDMigration.migrated(destination: destination, renames: renames) {
+                links.append((run, new))
+            }
+        }
+        let ranges = anchors.map(\.0) + links.map(\.0)
+        guard let first = ranges.first else { return false }
+        changeAttributes(in: ranges.dropFirst().reduce(first, NSUnionRange)) {
+            for (range, anchor) in anchors { storage.addAttribute(.headingAnchor, value: anchor, range: range) }
+            for (range, destination) in links {
+                storage.addAttribute(.markdownLink, value: destination, range: range)
+                storage.applyInlineStyles(in: range)
+            }
+        }
+        undoManager?.setActionName("Fix Heading IDs")
+        markBrokenLinks()
+        return true
     }
 
     // MARK: - New IDs
@@ -134,19 +239,21 @@ extension EditorViewController {
     func addMissingHeadingIDs(scheme: HeadingIDScheme, form: HeadingAnchor.Form, fileName: String?, taken: Set<String>,
                               onlyHeading: Int? = nil) {
         guard !isPlainText else { return }
-        var taken = taken.union(headings.compactMap(\.anchor?.id))
-        func newAnchor(text: String, level: Int) -> HeadingAnchor {
+        var taken = taken.union(headings.compactMap { $0.anchor?.hasID == true ? $0.anchor?.id : nil })
+        // The heading's other attributes stay, on the ID's line.
+        func newAnchor(text: String, level: Int, adding existing: HeadingAnchor?) -> HeadingAnchor {
             let id = scheme.makeID(text: text, level: level, fileName: fileName, taken: taken)
             taken.insert(id)
-            return HeadingAnchor(id: id, form: form)
+            return HeadingAnchor(id: id, form: form, others: existing?.others ?? [])
         }
 
         guard !isShowingMarkdown else {
             let markdown = storage.string
             var lines = MarkdownCodec.lines(fromMarkdown: markdown)
             for (number, index) in lines.indices.filter({ lines[$0].isTitledHeading }).enumerated()
-            where lines[index].anchor == nil && (onlyHeading == nil || onlyHeading == number) {
-                lines[index].anchor = newAnchor(text: lines[index].text, level: lines[index].style.rawValue)
+            where lines[index].anchor?.hasID != true && (onlyHeading == nil || onlyHeading == number) {
+                lines[index].anchor = newAnchor(text: lines[index].text, level: lines[index].style.rawValue,
+                                                adding: lines[index].anchor)
             }
             replaceChangedText(with: MarkdownCodec.markdown(from: lines))
             return
@@ -154,9 +261,9 @@ extension EditorViewController {
         guard storage.length > 0 else { return }
         storage.beginEditing()
         for (number, line) in lineRanges(in: NSRange(location: 0, length: storage.length)).filter(isTitledHeading).enumerated()
-        where headingAnchor(in: line) == nil && (onlyHeading == nil || onlyHeading == number) {
+        where headingAnchor(in: line)?.hasID != true && (onlyHeading == nil || onlyHeading == number) {
             let anchor = newAnchor(text: inlineMarkdown(in: contentsRange(of: line)),
-                                   level: storage.blockStyle(at: line.location).rawValue)
+                                   level: storage.blockStyle(at: line.location).rawValue, adding: headingAnchor(in: line))
             storage.addAttribute(.headingAnchor, value: anchor, range: line)
         }
         storage.endEditing()
@@ -164,7 +271,7 @@ extension EditorViewController {
     }
 
     /// Replaces the part of the text that differs from `text`, as one edit.
-    private func replaceChangedText(with text: String) {
+    func replaceChangedText(with text: String) {
         let old = Array(storage.string.utf16)
         let new = Array(text.utf16)
         guard old != new else { return }

@@ -87,6 +87,9 @@ enum MainMenu {
             leanpubMenu.addItem(withTitle: division.title, action: #selector(EditorViewController.insertLeanpubDivision(_:)),
                                 keyEquivalent: "").tag = index
         }
+        leanpubMenu.addItem(.separator())
+        leanpubMenu.addItem(withTitle: "Fix Heading IDs", action: #selector(EditorViewController.fixHeadingIDs(_:)),
+                            keyEquivalent: "")
         insertMenu.addItem(submenu: leanpubMenu, title: "Leanpub")
         // Only project windows have a variables.txt or bibliography.txt.
         insertMenu.addItem(withTitle: "Update Variables and Citations in Project",

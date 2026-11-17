@@ -56,6 +56,6 @@ public struct HeadingReference: Hashable, Sendable {
 extension MarkdownCodec {
     /// The IDs of the headings in `markdown`.
     public static func headingIDs(inMarkdown markdown: String) -> Set<String> {
-        Set(lines(fromMarkdown: markdown).compactMap { $0.isTitledHeading ? $0.anchor?.id : nil })
+        Set(lines(fromMarkdown: markdown).compactMap { $0.isTitledHeading && $0.anchor?.hasID == true ? $0.anchor?.id : nil })
     }
 }

@@ -92,7 +92,7 @@ final class MarkdownDocument: NSDocument {
     func headingID(at index: Int, settings: Settings) -> String? {
         let headings = editor.headings
         guard headings.indices.contains(index) else { return nil }
-        if let id = headings[index].anchor?.id { return id }
+        if let anchor = headings[index].anchor, anchor.hasID { return anchor.id }
         editor.addMissingHeadingIDs(scheme: settings.headingIDScheme, form: settings.headingIDForm,
                                     fileName: fileURL?.lastPathComponent, taken: idsInOtherFiles(), onlyHeading: index)
         // In the Formatted view the ID is an attribute, which isn't an edit.

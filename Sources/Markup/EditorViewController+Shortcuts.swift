@@ -66,7 +66,14 @@ extension EditorViewController {
                 // A heading just made, or just given its first character
                 // (on an empty last line), takes an ID typed above it.
                 if line.location > 0, case let above = lineRange(at: line.location - 1), convertAnchorLine(above) {
+                    // And a second line of attributes above that, as the
+                    // Markdown has it, unless both have IDs.
                     location = above.location
+                    if location > 0, case let second = lineRange(at: location - 1),
+                       let anchor = anchorLine(second), !(anchor.hasID && headingAnchor(in: lineRange(at: location))?.hasID == true),
+                       convertAnchorLine(second) {
+                        location = second.location
+                    }
                     continue
                 }
                 _ = convertTrailingAnchor(of: lineRange(at: location), after: edit)

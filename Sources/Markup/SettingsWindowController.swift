@@ -18,7 +18,7 @@ final class SettingsWindowController: NSWindowController {
     let quickVariablesCheckbox = NSButton(checkboxWithTitle: "Typing @name@ inserts the variable", target: nil, action: nil)
 
     static let formTitles: [HeadingAnchor.Form: String] = [
-        .idLine: "{#id: x} above the heading",
+        .idAttribute: "{id: x} above the heading",
         .braceLine: "{#x} above the heading",
         .attribute: "{#x} after the heading",
     ]
@@ -65,7 +65,8 @@ final class SettingsWindowController: NSWindowController {
 
         addsHeadingIDsCheckbox.target = self
         addsHeadingIDsCheckbox.action = #selector(headingIDsChanged(_:))
-        for form in HeadingAnchor.Form.allCases {
+        // Not {#id: x}, which Markua doesn't accept.
+        for form in HeadingAnchor.Form.allCases where form != .idLine {
             headingIDFormPopUp.addItem(withTitle: Self.formTitles[form]!)
             headingIDFormPopUp.lastItem?.representedObject = form.rawValue
         }

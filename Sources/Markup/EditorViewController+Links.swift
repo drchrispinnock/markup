@@ -197,8 +197,12 @@ extension EditorViewController {
         if isShowingMarkdown {
             // The heading's line, or the ID's line above it.
             let string = storage.string as NSString
-            let range = string.range(of: "{#\(id)")
-            if range.location != NSNotFound { found = NSRange(location: string.lineRange(for: range).location, length: 0) }
+            string.enumerateSubstrings(in: NSRange(location: 0, length: string.length), options: .byLines) { line, range, _, stop in
+                if let line, HeadingAnchor(line: line)?.id == id || line.hasPrefix("#") && line.hasSuffix("{#\(id)}") {
+                    found = NSRange(location: range.location, length: 0)
+                    stop.pointee = true
+                }
+            }
         } else {
             storage.enumerateAttribute(.headingAnchor, in: NSRange(location: 0, length: storage.length)) { value, run, stop in
                 guard (value as? HeadingAnchor)?.id == id else { return }
@@ -222,8 +226,9 @@ extension EditorViewController {
     /// Right-clicking a link adds Open Link, Change Link… and Remove Link to
     /// the top of the text view's menu, for that link.
     func textView(_ view: NSTextView, menu: NSMenu, for event: NSEvent, at charIndex: Int) -> NSMenu? {
-        guard !isShowingMarkdown, let index = textView.linkIndex(at: textView.convert(event.locationInWindow, from: nil))
-        else { return menu }
+        guard !isShowingMarkdown else { return menu }
+        addSampleItem(to: menu, at: charIndex)
+        guard let index = textView.linkIndex(at: textView.convert(event.locationInWindow, from: nil)) else { return menu }
         let range = linkRange(at: index)
         let items = [
             NSMenuItem(title: "Open Link", action: #selector(openClickedLink(_:)), keyEquivalent: ""),

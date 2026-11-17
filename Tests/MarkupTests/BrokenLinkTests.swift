@@ -204,7 +204,7 @@ import Testing
         step { textView.insertText("## Copied {#theirs}\n", replacementRange: textView.selectedRange()) }
         #expect(editor.markdown.hasPrefix("## Copied\nIntro"))
         document.addMissingHeadingIDs(fileName: "this.md")
-        #expect(editor.markdown.hasPrefix("{#id: this_2_Copied}\n## Copied\nIntro"))
+        #expect(editor.markdown.hasPrefix("{id: this_2_Copied}\n## Copied\nIntro"))
     }
 
     @Test func anIDTypedAtTheEndOfAHeadingBecomesItsID() {

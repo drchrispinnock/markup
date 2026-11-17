@@ -73,7 +73,7 @@ import Testing
 
     @Test func makesIDsFromTheFileLevelAndFirstWord() {
         let scheme = HeadingIDScheme.fileLevelWord
-        #expect(scheme.makeID(text: "Setting up my Dapp", level: 2, fileName: "170_dapps.md", taken: []) == "170_dapps_2_Setting")
+        #expect(scheme.makeID(text: "Setting up my Dapp", level: 2, fileName: "170_dapps.md", taken: []) == "ID170_dapps_2_Setting")
         #expect(scheme.makeID(text: "**Delegating** and Staking", level: 1, fileName: "notes.md", taken: [])
             == "notes_1_Delegating")
         #expect(scheme.makeID(text: "Extraordinarily long", level: 1, fileName: "my notes.md", taken: [])
@@ -81,14 +81,22 @@ import Testing
         #expect(scheme.makeID(text: "", level: 3, fileName: nil, taken: []) == "Untitled_3")
         #expect(scheme.makeID(text: "Setting", level: 2, fileName: "a.md", taken: ["a_2_Setting", "a_2_Setting_2"])
             == "a_2_Setting_3")
+        #expect(scheme.makeID(text: "Café crème", level: 1, fileName: "Écrire.md", taken: []) == "Ecrire_1_Cafe")
+        #expect(HeadingAnchor.isMarkuaID(scheme.makeID(text: "2024 recap", level: 1, fileName: "été 2.md", taken: [])))
+    }
+
+    @Test func onlyIDsStartingWithALetterAreMarkuaIDs() {
+        #expect(HeadingAnchor.isMarkuaID("a1-b_c") && HeadingAnchor.isMarkuaID("ID170_x"))
+        #expect(!HeadingAnchor.isMarkuaID("170_x") && !HeadingAnchor.isMarkuaID("_x") && !HeadingAnchor.isMarkuaID("")
+            && !HeadingAnchor.isMarkuaID("café") && !HeadingAnchor.isMarkuaID("a.b"))
     }
 
     @Test func makesHashIDs() {
         let id = HeadingIDScheme.hash.makeID(text: "Title", level: 1, fileName: "a.md", taken: [])
-        #expect(id.count == 8 && id.allSatisfy(\.isHexDigit))
+        #expect(id.count == 10 && id.hasPrefix("ID") && id.dropFirst(2).allSatisfy(\.isHexDigit))
         #expect(HeadingIDScheme.hash.makeID(text: "Title", level: 1, fileName: "a.md", taken: []) == id)
         let other = HeadingIDScheme.hash.makeID(text: "Title", level: 1, fileName: "a.md", taken: [id])
-        #expect(other != id && other.count == 8)
+        #expect(other != id && other.count == 10 && other.hasPrefix("ID"))
     }
 
     @Test func makesSlugs() {
@@ -96,5 +104,6 @@ import Testing
         #expect(scheme.makeID(text: "Setting up *my* Dapp!", level: 2, fileName: "a.md", taken: []) == "setting-up-my-dapp")
         #expect(scheme.makeID(text: "Intro", level: 1, fileName: nil, taken: ["intro", "intro-1"]) == "intro-2")
         #expect(scheme.makeID(text: "!!", level: 1, fileName: nil, taken: []) == "section")
+        #expect(scheme.makeID(text: "2024 in review", level: 1, fileName: nil, taken: []) == "ID2024-in-review")
     }
 }

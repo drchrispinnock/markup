@@ -62,7 +62,7 @@ extension EditorViewController {
     func currentHeadingTitles() -> [String: String] {
         var titles: [String: String] = [:]
         storage.enumerateAttribute(.headingAnchor, in: NSRange(location: 0, length: storage.length)) { value, run, _ in
-            guard let anchor = value as? HeadingAnchor else { return }
+            guard let anchor = value as? HeadingAnchor, anchor.hasID else { return }
             for line in lineRanges(in: run) where isTitledHeading(line) {
                 titles[anchor.id] = (storage.string as NSString).substring(with: contentsRange(of: line))
                     .replacingOccurrences(of: "\u{FFFC}", with: "")
