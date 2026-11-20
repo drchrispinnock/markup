@@ -4,7 +4,12 @@ import PackageDescription
 
 let package = Package(
     name: "Markup",
-    platforms: [.macOS(.v14)],
+    // iOS is for MarkupCore alone, which the iOS app (iOS/) uses.
+    platforms: [.macOS(.v14), .iOS(.v17)],
+    products: [
+        .executable(name: "Markup", targets: ["Markup"]),
+        .library(name: "MarkupCore", targets: ["MarkupCore"]),
+    ],
     dependencies: [
         // Software updates, in the app bundle only (see Updater.swift).
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.0"),

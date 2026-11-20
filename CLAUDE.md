@@ -19,7 +19,16 @@ It is a Swift Package (no Xcode project), built with the Command Line Tools:
 
 The `-plugin-path` flag is needed: the Command Line Tools keep the Swift Testing macro plugin in `plugins/testing/`, and the build doesn't reliably search there. Without the flag, test builds fail intermittently with "plugin for module 'TestingMacros' not found".
 
-The machine has only the Command Line Tools, not full Xcode. They lack SwiftUI's macro plugins, so `@State` and other SwiftUI macros fail to compile. That is why the UI is plain AppKit; don't introduce SwiftUI unless full Xcode is installed.
+The Mac app is built with the Command Line Tools (full Xcode is now installed too, for the iOS app). The Command Line Tools lack SwiftUI's macro plugins, so `@State` and other SwiftUI macros fail to compile under `swift build`. That is why the UI is plain AppKit; don't introduce SwiftUI into the Mac app.
+
+## Markup Go (iOS)
+
+`iOS/` holds Markup Go, a minimal iPhone and iPad editor sharing only `MarkupCore` (the package's `MarkupCore` library product; `Package.swift` lists iOS for it). The Mac app doesn't use anything there. It needs full Xcode, which is now installed (the Mac app still builds with `swift build`). `iOS/project.yml` is an XcodeGen spec: run `xcodegen` in `iOS/` after adding files to regenerate `MarkupGo.xcodeproj`. Build and test with `xcodebuild -project iOS/MarkupGo.xcodeproj -scheme MarkupGo -destination 'platform=iOS Simulator,name=iPhone 18 Pro' -derivedDataPath .build/ios test`. Debug builds take `-open <path>` at launch to open a file (`xcrun simctl launch booted com.chrispinnock.MarkupGo -open <path>`). `iOS/scripts/make-icon.swift` makes its icon from `img/Markup.png`.
+
+- `DocumentBrowserViewController` (a `UIDocumentBrowserViewController`) is the root; it opens `MarkdownFile`s (`UIDocument`, UTF-8, CRLF made LF) in an `EditorViewController` presented full screen. The file asks the editor for its Markdown when saving (`currentMarkdown`) and tells it when reloaded from disk (`didReload`).
+- The editor (TextKit 1 `UITextView`) formats only paragraphs, headings and code blocks, with bold, italic, strikethrough and inline code (plus subscript, superscript, highlight and links kept from the file). Like the Mac editor, the text has no markers; line styles and inline styles are attributes (`Styles.swift`). Every other line (lists, quotes, tables, front matter, comments spanning lines) is shown as its Markdown source, grey and monospaced, carrying a `SourceLine` (`.sourceLine`). `FormattedText` converts: a source line whose text is unchanged is written back as the `Line` it was read as; an edited one is read again as Markdown. So files round-trip exactly.
+- Keyboard toolbar: a style menu (Body, Heading 1–3, Code) and B / I / S / code toggles; ⌘B, ⌘I, ⇧⌘X, ⇧⌘C. `# ` typed at the start of a line makes a heading; Return after a heading starts a paragraph; ```` ``` ```` (or ```` ```lang ````) and Return starts a code block, and Return on its empty last line ends it. Heading IDs are kept (a split heading keeps its ID on the first part) but not added on save.
+- `textView.insertText` doesn't call `shouldChangeTextIn`, though the keyboard does, so `MarkupGoTests` types through the delegate first.
 
 ## Targets
 
